@@ -1,0 +1,43 @@
+# =============================================================================
+# MTS Attendance HRMS — root .gitignore
+# Monorepo wrapper for hrms-backend/ and hrms-frontend/
+# =============================================================================
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment (root-level only; see subproject .gitignore for app-specific rules)
+.env
+.env.local
+.env.*.local
+
+# Temporary / cache
+.cache/
+tmp/
+temp/
+
+# Coverage & test artifacts
+coverage/
+.nyc_output/
+
+# Optional local tooling
+.phpunit.result.cache

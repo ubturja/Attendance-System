@@ -406,11 +406,6 @@ Follow the step-by-step checklist in [`hrms-backend/QA_HAPPY_PATH.md`](hrms-back
 ```
 MTS Attn.Sys./
 ├── README.md                 ← this file
-├── .Cursor/                  ← architecture & product docs
-│   ├── ERD.md
-│   ├── info.md               ← PRD
-│   ├── SystemArchitecture.md
-│   └── HighLevelArchitecture.md
 │
 ├── hrms-backend/
 │   ├── app/

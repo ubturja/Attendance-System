@@ -8,7 +8,7 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  active: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  active: 'border border-brand-100 bg-brand-50 text-brand ring-0',
   inactive: 'bg-red-50 text-red-700 ring-red-600/20',
   neutral: 'bg-slate-100 text-slate-700 ring-slate-500/20',
   warning: 'bg-amber-50 text-amber-800 ring-amber-600/20',

@@ -11,11 +11,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-slate-900 text-white shadow-sm hover:bg-slate-800 focus-visible:ring-slate-900 disabled:bg-slate-400',
+    'bg-brand text-white shadow-sm hover:bg-brand-600 focus-visible:ring-brand disabled:bg-slate-400',
   outline:
-    'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:ring-slate-400 disabled:border-slate-200 disabled:text-slate-400',
+    'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-brand-50 hover:text-brand focus-visible:ring-brand disabled:border-slate-200 disabled:text-slate-400',
   ghost:
-    'bg-transparent text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-400 disabled:text-slate-400',
+    'bg-transparent text-slate-700 hover:bg-brand-50 hover:text-brand focus-visible:ring-brand disabled:text-slate-400',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

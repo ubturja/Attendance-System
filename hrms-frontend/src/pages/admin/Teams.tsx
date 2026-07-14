@@ -470,7 +470,7 @@ export default function Teams() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
             Team Management
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -604,7 +604,7 @@ export default function Teams() {
                 }}
                 className={cn(
                   'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-0',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0',
                   'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                 )}
               >
@@ -711,14 +711,14 @@ export default function Teams() {
                                 htmlFor={checkboxId}
                                 className={cn(
                                   'flex cursor-pointer items-start gap-3 px-4 py-3',
-                                  'hover:bg-slate-50',
+                                  'hover:bg-brand-50',
                                   isPanelBusy && 'cursor-not-allowed opacity-60',
                                 )}
                               >
                                 <input
                                   id={checkboxId}
                                   type="checkbox"
-                                  className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
                                   checked={isChecked}
                                   disabled={isPanelBusy}
                                   onChange={() => handleToggleUserSelection(user.id)}

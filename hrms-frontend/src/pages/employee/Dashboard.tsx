@@ -294,6 +294,7 @@ export default function Dashboard() {
   const isPageLoading = leaveTypesQuery.isLoading || profileQuery.isLoading;
   const isPageError = leaveTypesQuery.isError || profileQuery.isError;
   const isSubmitting = submitAttendanceMutation.isPending;
+  const areLeaveTypesLoading = leaveTypesQuery.isLoading;
 
   function handleCodeChange(memberId: number, value: string) {
     setSelections((previousSelections) => ({ ...previousSelections, [memberId]: value }));
@@ -430,7 +431,7 @@ export default function Dashboard() {
                         )}
                         value={selections[member.id] ?? DEFAULT_ATTENDANCE_CODE}
                         onChange={(event) => handleCodeChange(member.id, event.target.value)}
-                        disabled={isSubmitting || attendanceOptions.length === 0}
+                        disabled={isSubmitting || areLeaveTypesLoading}
                         aria-label={`Attendance code for ${member.name}`}
                       >
                         {attendanceOptions.map((option) => (

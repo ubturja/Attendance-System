@@ -37,7 +37,10 @@ class AttendanceVariantMapper
     ];
 
     /**
-     * Non-leave attendance codes — bypass balance validation, persist NULL FK.
+     * Zero-deduction attendance codes — bypass balance validation, persist NULL FK.
+     *
+     * Includes `W` (Work from Home) even when a matching leave_types row exists for
+     * Admin UI toggling. Presence in leave_types must NEVER cause a leave deduction.
      *
      * @var list<string>
      */
@@ -61,7 +64,8 @@ class AttendanceVariantMapper
     {
         $code = strtoupper(trim($submittedCode));
 
-        // ── Step 1: Non-leave codes (W, O, X) ─────────────────────────────────
+        // ── Step 1: Zero-deduction codes (W, O, X) ────────────────────────────
+        // Checked BEFORE leave_types lookup so seeded `W` never triggers a 1.0-day deduction.
         // Insert NULL into attendance_logs.leave_type_id; no balance interaction.
         if (in_array($code, self::NON_LEAVE_CODES, true)) {
             return new MappedAttendanceCode(

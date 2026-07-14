@@ -4,40 +4,57 @@ export interface LeaveTypeOptionSource {
 }
 
 export interface AttendanceOption {
-  value: string;
   label: string;
+  value: string;
 }
 
-/** Non-leave attendance codes always available in the employee submission dropdown. */
+/**
+ * Hardcoded base codes that are NOT managed in leave_types.
+ * Work from Home (`W`) is seeded in the DB and added dynamically when active.
+ */
 const BASE_ATTENDANCE_OPTIONS: AttendanceOption[] = [
-  { value: 'O', label: 'Present' },
-  { value: 'W', label: 'Work from Home' },
-  { value: 'X', label: 'OFF / CC' },
+  { label: 'Present', value: 'O' },
+  { label: 'OFF / CC', value: 'X' },
 ];
 
 /**
- * Builds attendance dropdown options from active leave types returned by `GET /leave-types`.
- * Half-day variants (AO/OA → A, NO/ON → N) are appended when the parent code is active.
+ * Builds attendance dropdown options from active leave types (`GET /leave-types`).
+ * Annual (A) and No Pay (N) expand to include morning/afternoon half-day variants.
+ * Work from Home (W) is included only when present in the active leave-types payload.
  */
 export function buildAttendanceOptions(leaveTypes: LeaveTypeOptionSource[]): AttendanceOption[] {
   const options: AttendanceOption[] = [...BASE_ATTENDANCE_OPTIONS];
-  const activeCodes = new Set(leaveTypes.map((leaveType) => leaveType.leave_type_code));
 
   for (const leaveType of leaveTypes) {
+    const code = leaveType.leave_type_code.toUpperCase();
+
+    if (code === 'W') {
+      options.push({ label: 'Work from Home', value: 'W' });
+      continue;
+    }
+
+    if (code === 'A') {
+      options.push(
+        { label: 'Annual Leave (Full Day)', value: 'A' },
+        { label: 'Annual Leave (Morning)', value: 'AO' },
+        { label: 'Annual Leave (Afternoon)', value: 'OA' },
+      );
+      continue;
+    }
+
+    if (code === 'N') {
+      options.push(
+        { label: 'No Pay Leave (Full Day)', value: 'N' },
+        { label: 'No Pay Leave (Morning)', value: 'NO' },
+        { label: 'No Pay Leave (Afternoon)', value: 'ON' },
+      );
+      continue;
+    }
+
     options.push({
+      label: `${leaveType.name} (Full Day)`,
       value: leaveType.leave_type_code,
-      label: `${leaveType.leave_type_code} — ${leaveType.name}`,
     });
-  }
-
-  if (activeCodes.has('A')) {
-    options.push({ value: 'AO', label: 'AO — Annual (Morning, 0.5 day)' });
-    options.push({ value: 'OA', label: 'OA — Annual (Afternoon, 0.5 day)' });
-  }
-
-  if (activeCodes.has('N')) {
-    options.push({ value: 'NO', label: 'NO — No Pay (Morning, 0.5 day)' });
-    options.push({ value: 'ON', label: 'ON — No Pay (Afternoon, 0.5 day)' });
   }
 
   return options;

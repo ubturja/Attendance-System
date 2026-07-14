@@ -35,7 +35,7 @@ class UpdateTeamRequest extends ApiFormRequest
             ],
 
             // Reassign or clear team leader — nullable removes leader designation.
-            'team_leader_id' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
+            'team_leader_id' => ['nullable', 'integer', 'exists:users,id'],
         ];
     }
 }

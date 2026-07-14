@@ -3,7 +3,6 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
   ClipboardList,
-  LayoutDashboard,
   LogOut,
   Search,
   Users,
@@ -18,11 +17,10 @@ import { cn } from '../../lib/utils';
 interface NavItem {
   label: string;
   to: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof Users;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', to: '/admin', icon: LayoutDashboard },
   { label: 'Users', to: '/admin/users', icon: Users },
   { label: 'Teams', to: '/admin/teams', icon: UsersRound },
   { label: 'Leave Types', to: '/admin/leave-types', icon: CalendarDays },
@@ -72,7 +70,7 @@ export function AdminLayout() {
               <NavLink
                 key={item.to + item.label}
                 to={item.to}
-                end={item.to === '/admin'}
+                end={item.to !== '/admin/reports'}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',

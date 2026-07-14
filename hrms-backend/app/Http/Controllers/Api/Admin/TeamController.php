@@ -23,9 +23,9 @@ class TeamController extends Controller
      */
     public function index(): JsonResponse
     {
-        // Eager-load relationships to avoid N+1 on Admin team management screens.
+        // Eager-load leader + members to avoid N+1 on Admin team management screens.
         $teams = Team::query()
-            ->with(['teamLeader', 'users'])
+            ->with(['leader', 'users'])
             ->orderBy('team_name')
             ->get();
 
@@ -47,7 +47,7 @@ class TeamController extends Controller
         // Mass assignment protected by Team::$fillable whitelist.
         $team = Team::query()->create($validated);
 
-        $team->load(['teamLeader', 'users']);
+        $team->load(['leader', 'users']);
 
         return response()->json([
             'success' => true,
@@ -61,7 +61,7 @@ class TeamController extends Controller
      */
     public function show(Team $team): JsonResponse
     {
-        $team->load(['teamLeader', 'users']);
+        $team->load(['leader', 'users']);
 
         return response()->json([
             'success' => true,
@@ -76,6 +76,7 @@ class TeamController extends Controller
     public function update(UpdateTeamRequest $request, Team $team): JsonResponse
     {
         // UpdateTeamRequest scopes team_name uniqueness to the current record.
+        // Accepts nullable team_leader_id (exists:users,id) to assign or clear the leader.
         $validated = $request->validated();
 
         // fill() respects $fillable — only team_name and team_leader_id are writable.
@@ -84,7 +85,7 @@ class TeamController extends Controller
         // Persist changes to MySQL teams table.
         $team->save();
 
-        $team->load(['teamLeader', 'users']);
+        $team->load(['leader', 'users']);
 
         return response()->json([
             'success' => true,

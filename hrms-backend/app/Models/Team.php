@@ -70,6 +70,14 @@ class Team extends Model
     }
 
     /**
+     * Alias for teamLeader() — exposed in API JSON as `leader` for Admin UI.
+     */
+    public function leader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'team_leader_id');
+    }
+
+    /**
      * ERD: teams.id → attendance_logs.team_id (1:M).
      * Historical attendance rows captured under this team's context.
      */

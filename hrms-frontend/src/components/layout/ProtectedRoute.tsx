@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   clearAuthSession,
+  ADMIN_HOME_PATH,
   EMPLOYEE_DASHBOARD_PATH,
   getAuthToken,
   LOGIN_PATH,
@@ -41,6 +42,10 @@ export interface ProtectedRouteProps {
  * is not allowed on the requested route.
  */
 export function resolveUnauthorizedRedirect(userRole: UserRole): string {
+  if (userRole === 'Admin') {
+    return ADMIN_HOME_PATH;
+  }
+
   if (userRole === 'Employee') {
     return EMPLOYEE_DASHBOARD_PATH;
   }

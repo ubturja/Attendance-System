@@ -58,8 +58,13 @@ class ReportController extends Controller
         $date = $request->validated('date');
 
         // Single query with eager-loaded user, team snapshot, and leave type — no N+1.
+        // withTrashed: soft-deleted leave types must still resolve for historical names.
         $logs = AttendanceLog::query()
-            ->with(['user', 'team', 'leaveType'])
+            ->with([
+                'user',
+                'team',
+                'leaveType' => fn ($query) => $query->withTrashed(),
+            ])
             ->whereDate('date', $date)
             ->get()
             // Sort by team name then user name (PRD: sorted by Team Name).
@@ -128,12 +133,13 @@ class ReportController extends Controller
         $daysInMonth = $periodStart->daysInMonth;
 
         // Eager-load team + month-scoped attendance logs with leave types (N+1 safe).
+        // withTrashed: soft-deleted leave types must still resolve for historical codes.
         $users = User::query()
             ->with([
                 'team',
                 'attendanceLogs' => fn ($query) => $query
                     ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-                    ->with('leaveType'),
+                    ->with(['leaveType' => fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed()]),
             ])
             ->where('is_active', true)
             ->get()
@@ -207,13 +213,18 @@ class ReportController extends Controller
         $year = (int) $request->validated('year');
 
         // Load all vertical balance rows for the year with relationships — single eager batch.
+        // withTrashed: soft-deleted leave types must still resolve for historical pivot names.
         $records = UserYearlyLeaveRecord::query()
-            ->with(['leaveType', 'user.team'])
+            ->with([
+                'leaveType' => fn ($query) => $query->withTrashed(),
+                'user.team',
+            ])
             ->where('year', $year)
             ->get();
 
-        // Master column catalog — ensures consistent keys even when a user lacks a leave type row.
+        // Master column catalog — includes archived types so historical columns stay intact.
         $leaveTypes = LeaveType::query()
+            ->withTrashed()
             ->orderBy('leave_type_code')
             ->get();
 

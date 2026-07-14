@@ -31,7 +31,7 @@ const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        element: <Navigate to="users" replace />,
+        element: <Navigate to="/admin/users" replace />,
       },
       {
         path: 'users',
@@ -62,7 +62,7 @@ const routes: RouteObject[] = [
   {
     path: '/employee',
     element: (
-      <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
+      <ProtectedRoute allowedRoles={['Employee']}>
         <EmployeeLayout />
       </ProtectedRoute>
     ),

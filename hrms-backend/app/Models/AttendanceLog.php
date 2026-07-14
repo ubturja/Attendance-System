@@ -80,9 +80,10 @@ class AttendanceLog extends Model
     /**
      * ERD: leave_types.id → attendance_logs.leave_type_id (1:M, nullable).
      * Null when the attendance code is a non-leave type (W, O, X).
+     * withTrashed keeps archived leave type names readable on historical logs.
      */
     public function leaveType(): BelongsTo
     {
-        return $this->belongsTo(LeaveType::class, 'leave_type_id');
+        return $this->belongsTo(LeaveType::class, 'leave_type_id')->withTrashed();
     }
 }

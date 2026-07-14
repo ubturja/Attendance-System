@@ -57,10 +57,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::apiResource('users', UserController::class);
         Route::apiResource('teams', TeamController::class);
 
-        // ── Module 3: Dynamic Leave — Admin catalog mutations (create + toggle is_active).
+        // ── Module 3: Dynamic Leave — Admin catalog mutations (create, toggle, archive, restore).
         Route::get('/leave-types', [LeaveTypeController::class, 'adminIndex']);
         Route::post('/leave-types', [LeaveTypeController::class, 'store']);
         Route::put('/leave-types/{leaveType}', [LeaveTypeController::class, 'update']);
+        Route::delete('/leave-types/{leaveType}', [LeaveTypeController::class, 'destroy']);
+        Route::patch('/leave-types/{id}/restore', [LeaveTypeController::class, 'restore']);
 
         // Module 3: Leave Allocation — yearly balance assignment and adjustment.
         Route::get('/leave-allocations', [LeaveAllocationController::class, 'index']);

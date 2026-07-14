@@ -8,26 +8,31 @@ use Database\Factories\LeaveTypeFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * ERD Entity: leave_types
  *
  * Admin-managed catalog of leave categories (e.g., A = Annual, S = Sick).
  * Powers dynamic attendance dropdowns and yearly balance allocations.
- * Standard non-leave codes (W, O, X) bypass this table at the application layer.
+ * Soft-deleted rows are hidden from Admin/Employee catalogs but remain
+ * readable in historical reports via withTrashed().
  *
  * @property int $id
  * @property string $leave_type_code
  * @property string $name
  * @property bool $is_active
+ * @property \Illuminate\Support\Carbon|null $deleted_at
  */
 class LeaveType extends Model
 {
     /** @use HasFactory<LeaveTypeFactory> */
     use HasFactory;
+    use SoftDeletes;
 
     /**
      * ERD schema does not define created_at / updated_at columns.
+     * SoftDeletes still manages deleted_at independently.
      */
     public $timestamps = false;
 

@@ -88,10 +88,11 @@ class UserYearlyLeaveRecord extends Model
     /**
      * ERD: leave_types.id → user_yearly_leave_records.leave_type_id (1:M).
      * The leave category this balance row tracks.
+     * withTrashed keeps archived leave type names readable on yearly pivots.
      */
     public function leaveType(): BelongsTo
     {
-        return $this->belongsTo(LeaveType::class, 'leave_type_id');
+        return $this->belongsTo(LeaveType::class, 'leave_type_id')->withTrashed();
     }
 
     /**

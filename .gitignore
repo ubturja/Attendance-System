@@ -1,6 +1,6 @@
 # =============================================================================
-# MTS Attendance HRMS — root .gitignore
-# Monorepo wrapper for hrms-backend/ and hrms-frontend/
+# MTS Attendance HRMS — monorepo .gitignore
+# Covers root + hrms-backend (Laravel) + hrms-frontend (Vite/React)
 # =============================================================================
 
 # OS
@@ -17,6 +17,10 @@ Desktop.ini
 .project
 .classpath
 .settings/
+.phpactor.json
+.nova/
+.zed/
+.codex/
 
 # Logs
 *.log
@@ -24,20 +28,55 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Environment (root-level only; see subproject .gitignore for app-specific rules)
+# Environment secrets (keep *.example / .env.development tracked)
 .env
+.env.backup
 .env.local
 .env.*.local
+.env.production
+!.env.example
+!.env.development
 
 # Temporary / cache
 .cache/
 tmp/
 temp/
-
-# Coverage & test artifacts
 coverage/
 .nyc_output/
-
-# Optional local tooling
 .phpunit.result.cache
+.phpunit.cache/
+
+# ---------------------------------------------------------------------------
+# Backend (Laravel)
+# ---------------------------------------------------------------------------
+hrms-backend/vendor/
+hrms-backend/node_modules/
+hrms-backend/auth.json
+hrms-backend/public/build/
+hrms-backend/public/hot
+hrms-backend/public/storage
+hrms-backend/public/fonts-manifest.dev.json
+hrms-backend/storage/*.key
+hrms-backend/storage/pail
+hrms-backend/storage/logs/*
+!hrms-backend/storage/logs/.gitignore
+hrms-backend/storage/framework/cache/data/*
+!hrms-backend/storage/framework/cache/data/.gitignore
+hrms-backend/storage/framework/sessions/*
+!hrms-backend/storage/framework/sessions/.gitignore
+hrms-backend/storage/framework/views/*
+!hrms-backend/storage/framework/views/.gitignore
+hrms-backend/bootstrap/cache/*.php
+!hrms-backend/bootstrap/cache/.gitignore
+hrms-backend/_ide_helper.php
+hrms-backend/Homestead.json
+hrms-backend/Homestead.yaml
+
+# ---------------------------------------------------------------------------
+# Frontend (Vite / React)
+# ---------------------------------------------------------------------------
+hrms-frontend/node_modules/
+hrms-frontend/dist/
+hrms-frontend/dist-ssr/

@@ -18,6 +18,8 @@ interface YearlyReportPivotRow {
   team_name: string | null;
   annual_leave_remaining: number;
   total_absences: number;
+  total_work_in_office: number;
+  total_wfh: number;
   [key: `${string}_assigned`]: number | undefined;
   [key: `${string}_taken`]: number | undefined;
   [key: `${string}_remaining`]: number | undefined;
@@ -150,7 +152,7 @@ export default function YearlyReport() {
               <Alert variant="error">Failed to load data. Please try again.</Alert>
             </div>
           ) : (
-            <table className="w-full min-w-[56rem] border-collapse text-sm">
+            <table className="w-full min-w-[64rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th
@@ -173,14 +175,11 @@ export default function YearlyReport() {
                   >
                     Team
                   </th>
-                  {leaveTypeColumns.map((code, index) => (
+                  {leaveTypeColumns.map((code) => (
                     <th
                       key={code}
                       colSpan={3}
-                      className={cn(
-                        'border-b border-slate-200 px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-600',
-                        index < leaveTypeColumns.length - 1 ? 'border-r' : 'border-r',
-                      )}
+                      className="border-b border-r border-slate-200 px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-600"
                     >
                       {code} Leave
                     </th>
@@ -197,25 +196,39 @@ export default function YearlyReport() {
                   <th
                     rowSpan={2}
                     className={cn(
-                      'h-11 min-w-[7rem] bg-amber-50 px-4 text-center align-middle',
+                      'h-11 min-w-[7rem] border-r border-slate-200 bg-amber-50 px-4 text-center align-middle',
                       'text-xs font-semibold uppercase tracking-wide text-amber-900',
                     )}
                   >
                     Total Absences
                   </th>
+                  <th
+                    rowSpan={2}
+                    className={cn(
+                      'h-11 min-w-[7rem] border-r border-slate-200 bg-sky-50 px-4 text-center align-middle',
+                      'text-xs font-semibold uppercase tracking-wide text-sky-900',
+                    )}
+                  >
+                    Total WFH Days
+                  </th>
+                  <th
+                    rowSpan={2}
+                    className={cn(
+                      'h-11 min-w-[7rem] bg-slate-100 px-4 text-center align-middle',
+                      'text-xs font-semibold uppercase tracking-wide text-slate-700',
+                    )}
+                  >
+                    Total Office Days
+                  </th>
                 </tr>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  {leaveTypeColumns.flatMap((code, codeIndex) =>
+                  {leaveTypeColumns.flatMap((code) =>
                     SUB_COLUMN_LABELS.map((label, labelIndex) => (
                       <th
                         key={`${code}-${label}`}
                         className={cn(
                           'h-9 px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500',
-                          labelIndex === 2 && codeIndex < leaveTypeColumns.length - 1
-                            ? 'border-r border-slate-200'
-                            : labelIndex === 2
-                              ? 'border-r border-slate-200'
-                              : '',
+                          labelIndex === 2 ? 'border-r border-slate-200' : '',
                         )}
                       >
                         {label}
@@ -228,7 +241,7 @@ export default function YearlyReport() {
                 {rows.length === 0 ? (
                   <tr className="hover:bg-transparent">
                     <td
-                      colSpan={4 + leaveTypeColumns.length * 3}
+                      colSpan={6 + leaveTypeColumns.length * 3}
                       className="py-10 text-center text-sm text-slate-500"
                     >
                       No yearly report data found for this year.
@@ -279,8 +292,14 @@ export default function YearlyReport() {
                       <td className="border-r border-slate-200 bg-emerald-50/80 px-4 py-3 text-center font-semibold tabular-nums text-emerald-950">
                         {formatDays(row.annual_leave_remaining)}
                       </td>
-                      <td className="bg-amber-50/80 px-4 py-3 text-center font-semibold tabular-nums text-amber-950">
+                      <td className="border-r border-slate-200 bg-amber-50/80 px-4 py-3 text-center font-semibold tabular-nums text-amber-950">
                         {formatDays(row.total_absences)}
+                      </td>
+                      <td className="border-r border-slate-200 bg-sky-50/80 px-4 py-3 text-center font-semibold tabular-nums text-sky-950">
+                        {row.total_wfh ?? 0}
+                      </td>
+                      <td className="bg-slate-100/80 px-4 py-3 text-center font-semibold tabular-nums text-slate-900">
+                        {row.total_work_in_office ?? 0}
                       </td>
                     </tr>
                   ))

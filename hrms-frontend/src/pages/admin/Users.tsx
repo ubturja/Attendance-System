@@ -180,8 +180,10 @@ async function saveUser({ userId, payload }: SaveUserVariables): Promise<UserRec
   return createUser(payload as CreateUserPayload);
 }
 
-async function fetchLeaveTypes(): Promise<LeaveTypeOption[]> {
-  const response = await api.get<ApiSuccessResponse<LeaveTypeOption[]>>('/admin/leave-types');
+async function fetchAllocationLeaveTypes(): Promise<LeaveTypeOption[]> {
+  const response = await api.get<ApiSuccessResponse<LeaveTypeOption[]>>('/leave-types', {
+    params: { requires_allocation: true },
+  });
   return response.data.data;
 }
 
@@ -274,8 +276,8 @@ export default function Users() {
   });
 
   const leaveTypesQuery = useQuery({
-    queryKey: queryKeys.leaveTypes.admin,
-    queryFn: fetchLeaveTypes,
+    queryKey: queryKeys.leaveTypes.allocation,
+    queryFn: fetchAllocationLeaveTypes,
   });
 
   const saveUserMutation = useMutation({
@@ -410,7 +412,7 @@ export default function Users() {
   const isSaving = saveUserMutation.isPending;
   const isAssigning = assignLeaveMutation.isPending;
   const teamOptions = teamsQuery.data ?? [];
-  const leaveTypeOptions = (leaveTypesQuery.data ?? []).filter((leaveType) => leaveType.is_active);
+  const leaveTypeOptions = leaveTypesQuery.data ?? [];
 
   return (
     <div className="space-y-6">

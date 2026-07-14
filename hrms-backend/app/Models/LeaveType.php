@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $leave_type_code
  * @property string $name
  * @property bool $is_active
+ * @property bool $requires_allocation
  * @property \Illuminate\Support\Carbon|null $deleted_at
  */
 class LeaveType extends Model
@@ -46,6 +47,7 @@ class LeaveType extends Model
         'leave_type_code',
         'name',
         'is_active',
+        'requires_allocation',
     ];
 
     /**
@@ -55,6 +57,7 @@ class LeaveType extends Model
      */
     protected $casts = [
         'is_active' => 'boolean',
+        'requires_allocation' => 'boolean',
     ];
 
     /**

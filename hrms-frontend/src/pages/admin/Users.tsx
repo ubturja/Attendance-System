@@ -5,6 +5,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { LeaveBalanceSlideOver } from '../../components/ui/LeaveBalanceSlideOver';
 import { SlideOver } from '../../components/ui/SlideOver';
 import {
   Table,
@@ -199,18 +200,6 @@ function getTeamName(user: UserRecord): string {
   return user.team?.team_name ?? '—';
 }
 
-function getAnnualLeaveBalanceLabel(user: UserRecord): string {
-  const annualRecord = user.yearly_leave_records.find(
-    (record) => record.leave_type?.leave_type_code === 'A',
-  );
-
-  if (annualRecord === undefined) {
-    return '—';
-  }
-
-  return `${annualRecord.remaining_days.toFixed(1)} days`;
-}
-
 function createUserFormFromRecord(user: UserRecord): CreateUserFormState {
   return {
     name: user.name,
@@ -260,6 +249,7 @@ export default function Users() {
     createEmptyAssignLeaveForm,
   );
   const [allocationError, setAllocationError] = useState<string | undefined>();
+  const [balanceModalUserId, setBalanceModalUserId] = useState<number | null>(null);
 
   const {
     data: users = [],
@@ -302,8 +292,11 @@ export default function Users() {
 
   const assignLeaveMutation = useMutation({
     mutationFn: assignLeaveAllocation,
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.admin });
+      void queryClient.invalidateQueries({
+        queryKey: ['admin', 'user', variables.userId, 'balances'],
+      });
       invalidateReportQueries(queryClient);
       handleCloseAllocationPanel();
     },
@@ -465,7 +458,16 @@ export default function Users() {
                       <Badge variant="neutral">{user.job_title}</Badge>
                     </TableCell>
                     <TableCell>{getTeamName(user)}</TableCell>
-                    <TableCell>{getAnnualLeaveBalanceLabel(user)}</TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setBalanceModalUserId(user.id)}
+                      >
+                        Show Leave Balance
+                      </Button>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={user.is_active ? 'active' : 'inactive'}>
                         {user.is_active ? 'Active' : 'Inactive'}
@@ -790,6 +792,12 @@ export default function Users() {
           </Button>
         </div>
       </SlideOver>
+
+      <LeaveBalanceSlideOver
+        isOpen={balanceModalUserId !== null}
+        userId={balanceModalUserId}
+        onClose={() => setBalanceModalUserId(null)}
+      />
     </div>
   );
 }

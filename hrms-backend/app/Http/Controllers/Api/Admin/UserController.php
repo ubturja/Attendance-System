@@ -54,8 +54,9 @@ class UserController extends Controller
      * Persist a new user account with a bcrypt-hashed password.
      *
      * Atomically seeds zero-balance user_yearly_leave_records for every active
-     * leave type so HR can immediately open the new hire's allocation profile
-     * and set assigned_days baselines without a separate setup step.
+     * leave type with requires_allocation = true so HR can immediately open the
+     * new hire's allocation profile and set assigned_days baselines. Non-quota
+     * statuses (e.g. Work from Home) are excluded from the balance sheet.
      */
     public function store(StoreUserRequest $request): JsonResponse
     {
@@ -73,13 +74,14 @@ class UserController extends Controller
 
             $currentYear = (int) date('Y');
 
-            // Load the active leave catalog — same set exposed on attendance dropdowns.
+            // Quota leave types only — exclude non-allocation codes (e.g. W = Work from Home).
             $activeLeaveTypes = LeaveType::query()
                 ->where('is_active', true)
+                ->where('requires_allocation', true)
                 ->orderBy('leave_type_code')
                 ->get();
 
-            // Initialize one balance row per leave type for the current calendar year.
+            // Initialize one balance row per quota leave type for the current calendar year.
             // assigned_days / taken_days start at 0.00 so HR can edit quotas via LeaveAllocationController.
             foreach ($activeLeaveTypes as $leaveType) {
                 UserYearlyLeaveRecord::query()->create([
@@ -105,12 +107,24 @@ class UserController extends Controller
     }
 
     /**
-     * Retrieve a single user record by primary key.
+     * Retrieve a single user with team and complete yearly leave balances.
+     *
+     * Eager-loads yearlyLeaveRecords.leaveType so the Admin popup receives
+     * assigned_days, taken_days, and the appended remaining_days
+     * (assigned − taken) for every leave type on this user's balance sheet.
      */
     public function show(User $user): JsonResponse
     {
         // Route-model binding resolves User or returns 404 before this method executes.
-        $user->load('team');
+        $user->load([
+            'team',
+            'yearlyLeaveRecords' => static function ($query): void {
+                $query
+                    ->orderByDesc('year')
+                    ->orderBy('leave_type_id')
+                    ->with('leaveType');
+            },
+        ]);
 
         return response()->json([
             'success' => true,

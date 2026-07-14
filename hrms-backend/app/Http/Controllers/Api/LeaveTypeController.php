@@ -24,14 +24,20 @@ class LeaveTypeController extends Controller
      *
      * Authenticated endpoint — any valid Sanctum token (Admin or Employee).
      * Filters WHERE is_active = true per HighLevelArchitecture dynamic dropdown logic.
+     * Optional query: ?requires_allocation=true|false filters quota vs non-quota types.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         // Scope to active, non-trashed records only — inactive/archived hidden from attendance UI.
-        $leaveTypes = LeaveType::query()
+        $query = LeaveType::query()
             ->where('is_active', true)
-            ->orderBy('leave_type_code')
-            ->get();
+            ->orderBy('leave_type_code');
+
+        if ($request->has('requires_allocation')) {
+            $query->where('requires_allocation', $request->boolean('requires_allocation'));
+        }
+
+        $leaveTypes = $query->get();
 
         return response()->json([
             'success' => true,

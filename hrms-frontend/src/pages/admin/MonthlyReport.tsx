@@ -32,6 +32,8 @@ interface MonthlyReportRow {
   team_name: string | null;
   days: Record<string, string | null>;
   totals: MonthlyReportTotals;
+  total_work_in_office: number;
+  total_wfh: number;
 }
 
 interface MonthlyReportData {
@@ -72,7 +74,7 @@ function MonthlyReportTableSkeleton() {
   return (
     <TableBody>
       <TableRow className="hover:bg-transparent">
-        <TableCell colSpan={5}>
+        <TableCell colSpan={7}>
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             Loading...
@@ -188,6 +190,8 @@ export default function MonthlyReport() {
               <TableHead>Annual Leave</TableHead>
               <TableHead>Sick Leave</TableHead>
               <TableHead>Other Leave</TableHead>
+              <TableHead>Total WFH</TableHead>
+              <TableHead>Total Office Days</TableHead>
             </TableRow>
           </TableHeader>
           {isLoading ? (
@@ -195,10 +199,10 @@ export default function MonthlyReport() {
           ) : (
             <TableBody>
               {isError ? (
-                <TableErrorRow colSpan={5} />
+                <TableErrorRow colSpan={7} />
               ) : rows.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-500">
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-500">
                     No monthly report data found for this period.
                   </TableCell>
                 </TableRow>
@@ -210,6 +214,8 @@ export default function MonthlyReport() {
                     <TableCell className="tabular-nums">{row.totals.annual}</TableCell>
                     <TableCell className="tabular-nums">{row.totals.sick}</TableCell>
                     <TableCell className="tabular-nums">{row.totals.other}</TableCell>
+                    <TableCell className="tabular-nums">{row.total_wfh}</TableCell>
+                    <TableCell className="tabular-nums">{row.total_work_in_office}</TableCell>
                   </TableRow>
                 ))
               )}

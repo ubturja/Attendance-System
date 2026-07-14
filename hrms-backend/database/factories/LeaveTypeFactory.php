@@ -22,6 +22,7 @@ class LeaveTypeFactory extends Factory
             'leave_type_code' => strtoupper(Str::random(3)),
             'name' => fake()->words(2, true).' Leave',
             'is_active' => true,
+            'requires_allocation' => true,
         ];
     }
 

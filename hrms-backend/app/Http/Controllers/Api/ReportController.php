@@ -157,21 +157,31 @@ class ReportController extends Controller
             $annualTotal = 0;
             $sickTotal = 0;
             $otherTotal = 0;
+            $totalWorkInOffice = 0;
+            $totalWfh = 0;
 
             foreach ($user->attendanceLogs as $log) {
                 $dayOfMonth = (int) $log->date->format('j');
-                $code = $log->leaveType?->leave_type_code;
+                $attendanceCode = $this->resolveAttendanceCode($log);
+                $leaveCode = $log->leaveType?->leave_type_code;
 
-                // Populate matrix cell with leave code (null = non-leave W/O/X or no entry).
-                $dayMatrix[$dayOfMonth] = $code;
+                // Populate matrix cell — prefer leave type when present; otherwise show O/W/X.
+                $dayMatrix[$dayOfMonth] = $leaveCode ?? ($attendanceCode !== '' ? $attendanceCode : null);
 
-                // Row-end totals — classify by leave_type_code (PRD: Annual, Sick, Other).
-                if ($code === 'A') {
+                // Row-end leave totals — classify by leave_type_code (PRD: Annual, Sick, Other).
+                if ($leaveCode === 'A') {
                     $annualTotal++;
-                } elseif ($code === 'S') {
+                } elseif ($leaveCode === 'S') {
                     $sickTotal++;
-                } elseif ($code !== null) {
+                } elseif ($leaveCode !== null) {
                     $otherTotal++;
+                }
+
+                // Office / WFH day totals — driven by submitted_code (leave_type_id is NULL for O/W).
+                if ($attendanceCode === 'O') {
+                    $totalWorkInOffice++;
+                } elseif ($attendanceCode === 'W') {
+                    $totalWfh++;
                 }
             }
 
@@ -185,6 +195,8 @@ class ReportController extends Controller
                     'sick' => $sickTotal,
                     'other' => $otherTotal,
                 ],
+                'total_work_in_office' => $totalWorkInOffice,
+                'total_wfh' => $totalWfh,
             ];
         });
 
@@ -228,7 +240,10 @@ class ReportController extends Controller
             ->orderBy('leave_type_code')
             ->get();
 
-        $pivotRows = $this->transformYearlyPivot($records, $leaveTypes);
+        // Year-scoped Office / WFH day counts from attendance_logs (submitted_code based).
+        $workDayTotalsByUser = $this->countWorkDayTotalsByUserForYear($year);
+
+        $pivotRows = $this->transformYearlyPivot($records, $leaveTypes, $workDayTotalsByUser);
 
         return response()->json([
             'success' => true,
@@ -276,13 +291,18 @@ class ReportController extends Controller
      *      {code}_remaining ← assigned_days − taken_days (runtime, never stored)
      * 3. annual_leave_remaining ← A_remaining specifically (HighLevelArchitecture.md).
      * 4. total_absences       ← Σ taken_days across ALL leave types for the user.
+     * 5. total_work_in_office / total_wfh ← attendance_logs day counts for O / W.
      *
      * @param  Collection<int, UserYearlyLeaveRecord>  $records
      * @param  Collection<int, LeaveType>  $leaveTypes
+     * @param  array<int, array{total_work_in_office: int, total_wfh: int}>  $workDayTotalsByUser
      * @return list<array<string, mixed>>
      */
-    private function transformYearlyPivot(Collection $records, Collection $leaveTypes): array
-    {
+    private function transformYearlyPivot(
+        Collection $records,
+        Collection $leaveTypes,
+        array $workDayTotalsByUser = [],
+    ): array {
         /** @var list<array<string, mixed>> $pivotRows */
         $pivotRows = [];
 
@@ -293,10 +313,11 @@ class ReportController extends Controller
             /** @var Collection<int, UserYearlyLeaveRecord> $userRecords */
             $firstRecord = $userRecords->first();
             $user = $firstRecord?->user;
+            $resolvedUserId = (int) $userId;
 
             // Base row metadata — identity columns preceding dynamic leave columns.
             $flatRow = [
-                'user_id' => (int) $userId,
+                'user_id' => $resolvedUserId,
                 'user_name' => $user?->name,
                 'team_name' => $user?->team?->team_name,
             ];
@@ -341,6 +362,14 @@ class ReportController extends Controller
             // Step 4b: Attach computed aggregate — never stored in DB.
             $flatRow['total_absences'] = $totalAbsences;
 
+            // Step 5: Office / WFH attendance day counts for the full calendar year.
+            $workDayTotals = $workDayTotalsByUser[$resolvedUserId] ?? [
+                'total_work_in_office' => 0,
+                'total_wfh' => 0,
+            ];
+            $flatRow['total_work_in_office'] = $workDayTotals['total_work_in_office'];
+            $flatRow['total_wfh'] = $workDayTotals['total_wfh'];
+
             $pivotRows[] = $flatRow;
         }
 
@@ -354,5 +383,62 @@ class ReportController extends Controller
         });
 
         return $pivotRows;
+    }
+
+    /**
+     * Count Work-in-Office (O) and Work-from-Home (W) attendance days per user for a year.
+     *
+     * O/W persist with leave_type_id NULL, so submitted_code is the primary signal.
+     * Falls back to leave_type.leave_type_code when submitted_code is absent (legacy rows).
+     *
+     * @return array<int, array{total_work_in_office: int, total_wfh: int}>
+     */
+    private function countWorkDayTotalsByUserForYear(int $year): array
+    {
+        $logs = AttendanceLog::query()
+            ->with(['leaveType' => fn ($query) => $query->withTrashed()])
+            ->whereYear('date', $year)
+            ->get(['id', 'user_id', 'submitted_code', 'leave_type_id']);
+
+        /** @var array<int, array{total_work_in_office: int, total_wfh: int}> $totalsByUser */
+        $totalsByUser = [];
+
+        foreach ($logs as $log) {
+            $userId = (int) $log->user_id;
+
+            if (! array_key_exists($userId, $totalsByUser)) {
+                $totalsByUser[$userId] = [
+                    'total_work_in_office' => 0,
+                    'total_wfh' => 0,
+                ];
+            }
+
+            $code = $this->resolveAttendanceCode($log);
+
+            if ($code === 'O') {
+                $totalsByUser[$userId]['total_work_in_office']++;
+            } elseif ($code === 'W') {
+                $totalsByUser[$userId]['total_wfh']++;
+            }
+        }
+
+        return $totalsByUser;
+    }
+
+    /**
+     * Resolve the effective attendance code for reporting.
+     *
+     * Prefers submitted_code (stores O/W/X and half-day variants); falls back to
+     * the related leave_type code for legacy rows without submitted_code.
+     */
+    private function resolveAttendanceCode(AttendanceLog $log): string
+    {
+        if ($log->submitted_code !== null && $log->submitted_code !== '') {
+            return strtoupper($log->submitted_code);
+        }
+
+        $leaveTypeCode = $log->leaveType?->leave_type_code;
+
+        return $leaveTypeCode !== null ? strtoupper($leaveTypeCode) : '';
     }
 }

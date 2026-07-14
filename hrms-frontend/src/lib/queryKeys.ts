@@ -5,6 +5,8 @@ export const queryKeys = {
   leaveTypes: {
     admin: ['admin', 'leave-types'] as const,
     active: ['leave-types', 'active'] as const,
+    /** Quota leave types for allocation UI (`requires_allocation=true`). */
+    allocation: ['leave-types', 'requires_allocation', true] as const,
   },
   users: {
     admin: ['admin', 'users'] as const,
@@ -25,6 +27,7 @@ export const queryKeys = {
 export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.admin });
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.active });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.allocation });
 }
 
 /** Refetch yearly (and related) report matrices after balance or attendance changes. */

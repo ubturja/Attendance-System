@@ -135,7 +135,7 @@ function buildDashboardStatCards(records: ProfileYearlyLeaveRecord[]): Dashboard
       value: formatBalanceDays(annualLeaveRemaining),
       unit: 'Days Remaining',
       icon: Wallet,
-      accent: 'text-emerald-700 bg-emerald-50',
+      accent: 'text-brand-600 bg-brand-50',
     },
     {
       title: 'No Pay Remaining',
@@ -320,7 +320,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-800">Dashboard</h1>
         <p className="mt-1 text-sm text-slate-500">
           View your leave balances and mark attendance for your team.
         </p>
@@ -426,7 +426,7 @@ export default function Dashboard() {
                       <select
                         className={cn(
                           'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                           'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                         )}
                         value={selections[member.id] ?? DEFAULT_ATTENDANCE_CODE}

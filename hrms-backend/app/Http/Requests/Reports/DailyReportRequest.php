@@ -23,6 +23,7 @@ class DailyReportRequest extends ApiFormRequest
     {
         return [
             'date' => ['required', 'date'],
+            'team_id' => ['nullable', 'integer', 'exists:teams,id'],
         ];
     }
 }

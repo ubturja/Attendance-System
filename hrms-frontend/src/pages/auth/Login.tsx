@@ -105,13 +105,18 @@ export default function Login() {
   const pendingRole = isPending ? loginMutation.variables?.intendedRole : undefined;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white to-brand-50 px-4 py-12">
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <img
+            src="/logo.png"
+            alt="MTS Logo"
+            className="mx-auto h-14 w-14 rounded-full object-contain"
+          />
+          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-brand">
             MTS Attendance
           </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-800">
             Sign in
           </h1>
           <p className="mt-2 text-sm text-slate-500">

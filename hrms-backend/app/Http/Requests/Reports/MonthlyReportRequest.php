@@ -24,6 +24,7 @@ class MonthlyReportRequest extends ApiFormRequest
         return [
             'year' => ['required', 'integer', 'digits:4', 'min:2000', 'max:2100'],
             'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'team_id' => ['nullable', 'integer', 'exists:teams,id'],
         ];
     }
 }

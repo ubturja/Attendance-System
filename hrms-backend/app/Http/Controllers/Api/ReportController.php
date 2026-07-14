@@ -56,16 +56,24 @@ class ReportController extends Controller
     public function daily(DailyReportRequest $request): JsonResponse
     {
         $date = $request->validated('date');
+        $teamId = $request->validated('team_id');
 
         // Single query with eager-loaded user, team snapshot, and leave type — no N+1.
         // withTrashed: soft-deleted leave types must still resolve for historical names.
-        $logs = AttendanceLog::query()
+        $logsQuery = AttendanceLog::query()
             ->with([
                 'user',
                 'team',
                 'leaveType' => fn ($query) => $query->withTrashed(),
             ])
-            ->whereDate('date', $date)
+            ->whereDate('date', $date);
+
+        // Optional team filter — uses attendance snapshot team_id for historical accuracy.
+        if ($teamId !== null && $teamId !== '') {
+            $logsQuery->where('team_id', $teamId);
+        }
+
+        $logs = $logsQuery
             ->get()
             // Sort by team name then user name (PRD: sorted by Team Name).
             ->sortBy(fn (AttendanceLog $log): array => [
@@ -127,6 +135,7 @@ class ReportController extends Controller
     {
         $year = (int) $request->validated('year');
         $month = (int) $request->validated('month');
+        $teamId = $request->validated('team_id');
 
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
         $periodEnd = $periodStart->copy()->endOfMonth();
@@ -134,14 +143,21 @@ class ReportController extends Controller
 
         // Eager-load team + month-scoped attendance logs with leave types (N+1 safe).
         // withTrashed: soft-deleted leave types must still resolve for historical codes.
-        $users = User::query()
+        $usersQuery = User::query()
             ->with([
                 'team',
                 'attendanceLogs' => fn ($query) => $query
                     ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
                     ->with(['leaveType' => fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed()]),
             ])
-            ->where('is_active', true)
+            ->where('is_active', true);
+
+        // Optional team filter — scopes the matrix to members of one team.
+        if ($teamId !== null && $teamId !== '') {
+            $usersQuery->where('team_id', $teamId);
+        }
+
+        $users = $usersQuery
             ->get()
             ->sortBy(fn (User $user): array => [
                 $user->team?->team_name ?? '',
@@ -223,16 +239,26 @@ class ReportController extends Controller
     public function yearly(YearlyReportRequest $request): JsonResponse
     {
         $year = (int) $request->validated('year');
+        $teamId = $request->validated('team_id');
 
         // Load all vertical balance rows for the year with relationships — single eager batch.
         // withTrashed: soft-deleted leave types must still resolve for historical pivot names.
-        $records = UserYearlyLeaveRecord::query()
+        $recordsQuery = UserYearlyLeaveRecord::query()
             ->with([
                 'leaveType' => fn ($query) => $query->withTrashed(),
                 'user.team',
             ])
-            ->where('year', $year)
-            ->get();
+            ->where('year', $year);
+
+        // Optional team filter — only include balance rows for users on the selected team.
+        if ($teamId !== null && $teamId !== '') {
+            $recordsQuery->whereHas(
+                'user',
+                static fn ($query) => $query->where('team_id', $teamId),
+            );
+        }
+
+        $records = $recordsQuery->get();
 
         // Master column catalog — includes archived types so historical columns stay intact.
         $leaveTypes = LeaveType::query()
@@ -241,7 +267,10 @@ class ReportController extends Controller
             ->get();
 
         // Year-scoped Office / WFH day counts from attendance_logs (submitted_code based).
-        $workDayTotalsByUser = $this->countWorkDayTotalsByUserForYear($year);
+        $workDayTotalsByUser = $this->countWorkDayTotalsByUserForYear(
+            $year,
+            $teamId !== null && $teamId !== '' ? (int) $teamId : null,
+        );
 
         $pivotRows = $this->transformYearlyPivot($records, $leaveTypes, $workDayTotalsByUser);
 
@@ -391,14 +420,24 @@ class ReportController extends Controller
      * O/W persist with leave_type_id NULL, so submitted_code is the primary signal.
      * Falls back to leave_type.leave_type_code when submitted_code is absent (legacy rows).
      *
+     * @param  int|null  $teamId  When set, only count logs for users currently on this team.
      * @return array<int, array{total_work_in_office: int, total_wfh: int}>
      */
-    private function countWorkDayTotalsByUserForYear(int $year): array
+    private function countWorkDayTotalsByUserForYear(int $year, ?int $teamId = null): array
     {
-        $logs = AttendanceLog::query()
+        $logsQuery = AttendanceLog::query()
             ->with(['leaveType' => fn ($query) => $query->withTrashed()])
-            ->whereYear('date', $year)
-            ->get(['id', 'user_id', 'submitted_code', 'leave_type_id']);
+            ->whereYear('date', $year);
+
+        if ($teamId !== null) {
+            $logsQuery->whereHas(
+                'user',
+                static fn ($query) => $query->where('team_id', $teamId),
+            );
+        }
+
+        /** @var Collection<int, AttendanceLog> $logs */
+        $logs = $logsQuery->get(['id', 'user_id', 'submitted_code', 'leave_type_id']);
 
         /** @var array<int, array{total_work_in_office: int, total_wfh: int}> $totalsByUser */
         $totalsByUser = [];

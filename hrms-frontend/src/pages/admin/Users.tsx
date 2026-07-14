@@ -411,7 +411,7 @@ export default function Users() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
             User Management
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -606,7 +606,7 @@ export default function Users() {
                 }}
                 className={cn(
                   'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                   'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                 )}
               >
@@ -637,7 +637,7 @@ export default function Users() {
                 }}
                 className={cn(
                   'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                   'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                 )}
               >
@@ -713,7 +713,7 @@ export default function Users() {
                 }}
                 className={cn(
                   'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                   'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                 )}
               >

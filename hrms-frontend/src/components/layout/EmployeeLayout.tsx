@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
 ];
 
 function ProfileTextSkeleton({ className }: { className?: string }) {
-  return <span className={cn('inline-block h-4 w-24 animate-pulse rounded bg-slate-300/60', className)} />;
+  return <span className={cn('inline-block h-4 w-24 animate-pulse rounded bg-slate-200', className)} />;
 }
 
 export function EmployeeLayout() {
@@ -45,14 +45,16 @@ export function EmployeeLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-slate-900 text-slate-100">
-        <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-700 text-sm font-bold tracking-wide">
-            MTS
-          </div>
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-slate-200 bg-white">
+        <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-6">
+          <img
+            src="/logo.png"
+            alt="MTS Logo"
+            className="h-10 w-10 shrink-0 rounded-full object-contain"
+          />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">MTS Attendance</p>
-            <p className="truncate text-xs text-slate-400">Employee Portal</p>
+            <p className="truncate text-sm font-semibold text-slate-800">MTS Attendance</p>
+            <p className="truncate text-xs text-slate-500">Employee Portal</p>
           </div>
         </div>
 
@@ -66,10 +68,10 @@ export function EmployeeLayout() {
                 end={item.end}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors',
                     isActive
-                      ? 'bg-slate-800 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+                      ? 'border-r-4 border-brand bg-brand-50 font-semibold text-brand'
+                      : 'rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand',
                   )
                 }
               >
@@ -80,16 +82,16 @@ export function EmployeeLayout() {
           })}
         </nav>
 
-        <div className="border-t border-slate-800 p-4">
+        <div className="border-t border-slate-200 p-4">
           <p className="text-xs text-slate-500">Signed in as</p>
-          <p className="mt-0.5 truncate text-sm font-medium text-slate-200">
-            {isLoading ? <ProfileTextSkeleton className="bg-slate-600/60" /> : displayName}
+          <p className="mt-0.5 truncate text-sm font-medium text-slate-800">
+            {isLoading ? <ProfileTextSkeleton /> : displayName}
           </p>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-3 w-full justify-start gap-2 px-2 text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="mt-3 w-full justify-start gap-2 px-2"
             onClick={handleLogout}
             disabled={isLoggingOut}
           >
@@ -100,9 +102,9 @@ export function EmployeeLayout() {
       </aside>
 
       <div className="pl-64">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
           <div>
-            <p className="text-sm font-medium text-slate-900">Team Attendance</p>
+            <p className="text-sm font-medium text-slate-800">Team Attendance</p>
             <p className="text-xs text-slate-500">
               {isLoading ? <ProfileTextSkeleton className="mt-1 h-3 w-20" /> : teamName}
             </p>
@@ -110,7 +112,7 @@ export function EmployeeLayout() {
 
           <div className="flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="text-sm font-medium text-slate-900">
+              <p className="text-sm font-medium text-slate-800">
                 {isLoading ? <ProfileTextSkeleton /> : displayName}
               </p>
               <p className="text-xs text-slate-500">
@@ -123,7 +125,7 @@ export function EmployeeLayout() {
               <Avatar
                 initials={avatarInitials}
                 size="sm"
-                className="bg-slate-800 text-white"
+                className="bg-brand text-white"
               />
             )}
           </div>

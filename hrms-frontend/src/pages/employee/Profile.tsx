@@ -71,7 +71,7 @@ export default function Profile() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Profile</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-800">Profile</h1>
         <p className="mt-1 text-sm text-slate-500">
           Read-only view of your account details.
         </p>
@@ -93,7 +93,7 @@ export default function Profile() {
               <Avatar
                 initials={profileInitials(profile.name)}
                 size="lg"
-                className="bg-slate-800 text-white"
+                className="bg-brand text-white"
               />
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold text-slate-900">{profile.name}</p>

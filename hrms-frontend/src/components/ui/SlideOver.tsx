@@ -75,7 +75,7 @@ export function SlideOver({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             aria-label="Close"
           >
             <X className="h-5 w-5" aria-hidden="true" />

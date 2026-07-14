@@ -131,7 +131,7 @@ function AttendanceCodeCell({
           aria-label={`Attendance code for ${record.user_name ?? 'employee'}`}
           className={cn(
             'h-9 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
             'disabled:cursor-wait disabled:bg-slate-50 disabled:text-slate-500',
           )}
         >
@@ -223,7 +223,7 @@ export default function DailyReport() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
           Daily Report
         </h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -251,7 +251,7 @@ export default function DailyReport() {
               onChange={(event) => setReportDate(event.target.value)}
               className={cn(
                 'h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
               )}
             />
           </div>

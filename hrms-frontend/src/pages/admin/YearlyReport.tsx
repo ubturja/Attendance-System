@@ -54,8 +54,8 @@ async function fetchYearlyReport(year: number): Promise<YearlyReportData> {
 
 const stickyUserHead = 'sticky left-0 z-30 bg-slate-50';
 const stickyTeamHead = 'sticky left-[9rem] z-30 bg-slate-50';
-const stickyUser = 'sticky left-0 z-20 bg-white group-hover:bg-slate-50/80';
-const stickyTeam = 'sticky left-[9rem] z-20 bg-white group-hover:bg-slate-50/80';
+const stickyUser = 'sticky left-0 z-20 bg-white group-hover:bg-brand-50/80';
+const stickyTeam = 'sticky left-[9rem] z-20 bg-white group-hover:bg-brand-50/80';
 
 const SUB_COLUMN_LABELS = ['Assigned', 'Taken', 'Remaining'] as const;
 
@@ -77,7 +77,7 @@ export default function YearlyReport() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
           Yearly Report
         </h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -109,7 +109,7 @@ export default function YearlyReport() {
               }}
               className={cn(
                 'h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
               )}
             />
           </div>
@@ -251,7 +251,7 @@ export default function YearlyReport() {
                   rows.map((row) => (
                     <tr
                       key={row.user_id}
-                      className="group border-b border-slate-200 transition-colors hover:bg-slate-50/80"
+                      className="group border-b border-slate-200 transition-colors hover:bg-brand-50/80"
                     >
                       <td
                         className={cn(

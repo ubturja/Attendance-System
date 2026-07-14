@@ -242,7 +242,7 @@ export default function LeaveTypes() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
             Leave Types
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -317,9 +317,9 @@ export default function LeaveTypes() {
                             onClick={() => toggleActive(row)}
                             className={cn(
                               'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2',
                               'disabled:cursor-not-allowed disabled:opacity-60',
-                              row.is_active ? 'bg-emerald-500' : 'bg-slate-300',
+                              row.is_active ? 'bg-brand' : 'bg-slate-300',
                             )}
                           >
                             <span
@@ -349,7 +349,7 @@ export default function LeaveTypes() {
                           disabled={isRowBusy}
                           aria-label={`Restore ${row.name}`}
                           onClick={() => handleRestoreLeaveType(row)}
-                          className="text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          className="text-brand-600 hover:bg-brand-50 hover:text-brand"
                         >
                           <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
                           {restoringLeaveTypeId === row.id ? 'Restoring...' : 'Restore'}

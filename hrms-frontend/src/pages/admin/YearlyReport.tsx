@@ -98,6 +98,11 @@ export default function YearlyReport() {
     queryFn: fetchTeams,
   });
 
+  const selectedTeam = teams.find((team) => String(team.id) === teamId);
+  const emptyStateMessage = selectedTeam
+    ? `No member assigned in ${selectedTeam.team_name}`
+    : 'No members found.';
+
   const leaveTypeColumns = report?.leave_type_columns ?? [];
   const rows = report?.rows ?? [];
 
@@ -194,6 +199,10 @@ export default function YearlyReport() {
             <div className="p-6">
               <Alert variant="error">Failed to load data. Please try again.</Alert>
             </div>
+          ) : !rows || rows.length === 0 ? (
+            <div className="bg-slate-50 py-12 text-center text-sm font-medium text-slate-500">
+              {emptyStateMessage}
+            </div>
           ) : (
             <table className="w-full min-w-[64rem] border-collapse text-sm">
               <thead>
@@ -281,17 +290,7 @@ export default function YearlyReport() {
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 ? (
-                  <tr className="hover:bg-transparent">
-                    <td
-                      colSpan={6 + leaveTypeColumns.length * 3}
-                      className="py-10 text-center text-sm text-slate-500"
-                    >
-                      No yearly report data found for this year.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((row) => (
+                {rows.map((row) => (
                     <tr
                       key={row.user_id}
                       className="group border-b border-slate-200 transition-colors hover:bg-brand-50/80"
@@ -345,8 +344,7 @@ export default function YearlyReport() {
                         {row.total_work_in_office ?? 0}
                       </td>
                     </tr>
-                  ))
-                )}
+                  ))}
               </tbody>
             </table>
           )}

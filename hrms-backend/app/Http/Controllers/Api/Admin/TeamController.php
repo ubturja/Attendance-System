@@ -24,32 +24,29 @@ class TeamController extends Controller
      * List teams for the Admin catalog.
      *
      * Query: ?status=archived → only soft-deleted rows with membership history.
+     * Query: ?search=alpha → filters by team_name (LIKE), works with archived status.
      * Default → non-trashed teams with leader + current members.
      */
     public function index(Request $request): JsonResponse
     {
-        if ($request->query('status') === 'archived') {
-            $teams = Team::onlyTrashed()
-                ->with(['leader', 'historicalMembers.user'])
-                ->orderBy('team_name')
-                ->get();
+        $search = $request->query('search');
+        $isArchived = $request->query('status') === 'archived';
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Archived teams retrieved successfully.',
-                'data' => $teams,
-            ], 200);
+        $query = $isArchived
+            ? Team::onlyTrashed()->with(['leader', 'historicalMembers.user'])
+            : Team::query()->with(['leader', 'users']);
+
+        if (is_string($search) && trim($search) !== '') {
+            $query->where('team_name', 'like', '%'.trim($search).'%');
         }
 
-        // Eager-load leader + members to avoid N+1 on Admin team management screens.
-        $teams = Team::query()
-            ->with(['leader', 'users'])
-            ->orderBy('team_name')
-            ->get();
+        $teams = $query->orderBy('team_name')->get();
 
         return response()->json([
             'success' => true,
-            'message' => 'Teams retrieved successfully.',
+            'message' => $isArchived
+                ? 'Archived teams retrieved successfully.'
+                : 'Teams retrieved successfully.',
             'data' => $teams,
         ], 200);
     }

@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArchiveRestore, Loader2, MoreHorizontal, Plus, UserMinus, UserPlus } from 'lucide-react';
+import {
+  ArchiveRestore,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  Search,
+  UserMinus,
+  UserPlus,
+} from 'lucide-react';
 import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -105,9 +113,17 @@ const EMPTY_CREATE_TEAM_FORM: CreateTeamFormState = {
   name: '',
 };
 
-async function fetchTeams(isArchived: boolean): Promise<TeamRecord[]> {
+async function fetchTeams(isArchived: boolean, search: string): Promise<TeamRecord[]> {
+  const params: Record<string, string> = {};
+  if (isArchived) {
+    params.status = 'archived';
+  }
+  if (search !== '') {
+    params.search = search;
+  }
+
   const response = await api.get<ApiSuccessResponse<TeamRecord[]>>('/admin/teams', {
-    params: isArchived ? { status: 'archived' } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
   return response.data.data;
 }
@@ -236,6 +252,7 @@ export default function Teams() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const isArchived = searchParams.get('status') === 'archived';
+  const searchQuery = searchParams.get('search') || '';
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
   const [formState, setFormState] = useState<CreateTeamFormState>(EMPTY_CREATE_TEAM_FORM);
@@ -258,8 +275,8 @@ export default function Teams() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: [...queryKeys.teams.admin, isArchived ? 'archived' : 'current'],
-    queryFn: () => fetchTeams(isArchived),
+    queryKey: queryKeys.teams.list(isArchived, searchQuery),
+    queryFn: () => fetchTeams(isArchived, searchQuery),
   });
 
   const { data: allUsers = [] } = useQuery({
@@ -471,17 +488,32 @@ export default function Teams() {
     setTeamLeaderId(null);
   }
 
+  function handleSearchChange(value: string): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === '') {
+        next.delete('search');
+      } else {
+        next.set('search', value);
+      }
+      return next;
+    });
+  }
+
   function handleToggleArchiveView() {
     setActionError(undefined);
     setActionSuccess(undefined);
     handleClosePanel();
 
-    if (isArchived) {
-      setSearchParams({});
-      return;
-    }
-
-    setSearchParams({ status: 'archived' });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (isArchived) {
+        next.delete('status');
+      } else {
+        next.set('status', 'archived');
+      }
+      return next;
+    });
   }
 
   function handleRestoreTeam(teamId: number) {
@@ -615,6 +647,28 @@ export default function Teams() {
         <Alert variant="error">{actionError}</Alert>
       ) : null}
 
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="relative min-w-[16rem] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            aria-hidden="true"
+          />
+          <input
+            id="teams-search"
+            type="search"
+            value={searchQuery}
+            placeholder="Search teams..."
+            aria-label="Search teams by name"
+            onChange={(event) => handleSearchChange(event.target.value)}
+            className={cn(
+              'h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900',
+              'placeholder:text-slate-400',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+            )}
+          />
+        </div>
+      </div>
+
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <Table>
           <TableHeader>
@@ -635,7 +689,11 @@ export default function Teams() {
               ) : teams.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-500">
-                    {isArchived ? 'No archived teams found.' : 'No teams found.'}
+                    {searchQuery !== ''
+                      ? 'No teams match your search.'
+                      : isArchived
+                        ? 'No archived teams found.'
+                        : 'No teams found.'}
                   </TableCell>
                 </TableRow>
               ) : (

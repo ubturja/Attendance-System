@@ -31,10 +31,10 @@ interface ApiSuccessResponse<T> {
 }
 
 interface DailyReportRecord {
-  id: number;
+  id: number | null;
   user_id: number;
   user_name: string | null;
-  team_id: number;
+  team_id: number | null;
   team_name: string | null;
   date: string;
   submitted_code: string | null;
@@ -67,7 +67,7 @@ function getTodayDateString(): string {
 }
 
 function resolveDisplayCode(record: DailyReportRecord): string {
-  return record.submitted_code ?? record.leave_type_code ?? 'O';
+  return record.submitted_code ?? record.leave_type_code ?? '';
 }
 
 async function fetchDailyReport(date: string, teamId: string): Promise<DailyReportData> {
@@ -128,10 +128,13 @@ function AttendanceCodeCell({
   onCodeChange,
 }: AttendanceCodeCellProps) {
   const displayCode = resolveDisplayCode(record);
+  const hasAttendanceLog = record.id !== null;
 
-  if (!isAdmin) {
+  if (!isAdmin || !hasAttendanceLog) {
     return (
-      <TableCell className="font-medium tabular-nums text-slate-900">{displayCode}</TableCell>
+      <TableCell className="font-medium tabular-nums text-slate-900">
+        {displayCode !== '' ? displayCode : '—'}
+      </TableCell>
     );
   }
 
@@ -139,7 +142,7 @@ function AttendanceCodeCell({
     <TableCell>
       <div className="relative inline-flex min-w-[10rem] items-center">
         <select
-          value={displayCode}
+          value={displayCode !== '' ? displayCode : 'O'}
           disabled={isSaving}
           onChange={(event) => onCodeChange(record, event.target.value)}
           aria-label={`Attendance code for ${record.user_name ?? 'employee'}`}
@@ -196,6 +199,11 @@ export default function DailyReport() {
     queryFn: fetchTeams,
   });
 
+  const selectedTeam = teams.find((team) => String(team.id) === teamId);
+  const emptyStateMessage = selectedTeam
+    ? `No member assigned in ${selectedTeam.team_name}`
+    : 'No members found.';
+
   const leaveTypesQuery = useQuery({
     queryKey: queryKeys.leaveTypes.active,
     queryFn: fetchActiveLeaveTypes,
@@ -244,7 +252,7 @@ export default function DailyReport() {
   function handleCodeChange(record: DailyReportRecord, code: string) {
     const currentCode = resolveDisplayCode(record);
 
-    if (code === currentCode) {
+    if (record.id === null || code === currentCode) {
       return;
     }
 
@@ -349,15 +357,18 @@ export default function DailyReport() {
             <TableBody>
               {isError ? (
                 <TableErrorRow colSpan={4} />
-              ) : records.length === 0 ? (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-8 text-center text-sm text-slate-500">
-                    No attendance records found for this date.
+              ) : !records || records.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={100}
+                    className="bg-slate-50 py-12 text-center text-sm font-medium text-slate-500"
+                  >
+                    {emptyStateMessage}
                   </TableCell>
                 </TableRow>
               ) : (
                 records.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow key={row.id ?? `user-${row.user_id}`}>
                     <TableCell className="font-medium text-slate-900">
                       {row.user_name ?? '—'}
                     </TableCell>
@@ -367,7 +378,7 @@ export default function DailyReport() {
                       record={row}
                       options={attendanceOptions}
                       isAdmin={isAdmin}
-                      isSaving={savingRowId === row.id}
+                      isSaving={row.id !== null && savingRowId === row.id}
                       onCodeChange={handleCodeChange}
                     />
                   </TableRow>

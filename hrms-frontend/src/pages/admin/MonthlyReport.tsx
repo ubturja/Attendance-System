@@ -131,6 +131,11 @@ export default function MonthlyReport() {
     queryFn: fetchTeams,
   });
 
+  const selectedTeam = teams.find((team) => String(team.id) === teamId);
+  const emptyStateMessage = selectedTeam
+    ? `No member assigned in ${selectedTeam.team_name}`
+    : 'No members found.';
+
   const rows = report?.rows ?? [];
 
   function updateSearchParams(updates: Record<string, string>): void {
@@ -252,10 +257,13 @@ export default function MonthlyReport() {
             <TableBody>
               {isError ? (
                 <TableErrorRow colSpan={7} />
-              ) : rows.length === 0 ? (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-500">
-                    No monthly report data found for this period.
+              ) : !rows || rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={100}
+                    className="bg-slate-50 py-12 text-center text-sm font-medium text-slate-500"
+                  >
+                    {emptyStateMessage}
                   </TableCell>
                 </TableRow>
               ) : (

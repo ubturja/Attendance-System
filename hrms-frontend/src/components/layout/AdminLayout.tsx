@@ -4,7 +4,6 @@ import {
   CalendarDays,
   ClipboardList,
   LogOut,
-  Search,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -109,28 +108,8 @@ export function AdminLayout() {
       </aside>
 
       <div className="pl-64">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
-          <div className="relative w-full max-w-md">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              placeholder="Search employees, teams..."
-              disabled
-              title="Feature coming soon"
-              className={cn(
-                'h-10 w-full rounded-md border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900',
-                'placeholder:text-slate-400',
-                'disabled:cursor-not-allowed disabled:opacity-60',
-                'focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-              )}
-              aria-label="Search"
-            />
-          </div>
-
-          <div className="ml-6 flex shrink-0 items-center gap-3">
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-end border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
+          <div className="flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-slate-800">
                 {isLoading ? <ProfileTextSkeleton /> : displayName}

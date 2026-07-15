@@ -14,6 +14,8 @@ export const queryKeys = {
   },
   teams: {
     admin: ['admin', 'teams'] as const,
+    list: (isArchived: boolean, search: string) =>
+      ['admin', 'teams', 'list', isArchived ? 'archived' : 'current', search] as const,
   },
   profile: ['profile'] as const,
   reports: {

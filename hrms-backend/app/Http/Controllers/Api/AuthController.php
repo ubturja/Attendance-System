@@ -14,21 +14,25 @@ use Illuminate\Support\Facades\Hash;
 /**
  * Sanctum token authentication controller for the HRMS REST API.
  *
- * Exposes stateless login/logout endpoints consumed by the React SPA.
- * Successful login returns a Bearer token plus the user's job_title for
- * immediate client-side RBAC routing (Admin vs Employee).
+ * Exposes a single unified login endpoint consumed by the React SPA.
+ * Successful login returns a Bearer token plus the authenticated user
+ * (including job_title) for immediate client-side RBAC routing.
  */
 class AuthController extends Controller
 {
     /**
      * Authenticate credentials and issue a personal access token.
      *
+     * Role is never accepted from the request — RBAC is derived solely from
+     * the authenticated user's persisted job_title (Admin | Employee).
+     *
      * Flow:
-     * 1. LoginRequest validates email/password shape (422 on failure).
-     * 2. Resolve user by email — generic 401 if not found (prevents user enumeration timing leaks when paired with hash check).
+     * 1. LoginRequest validates email/password only (422 on failure).
+     * 2. Resolve user by email — generic 401 if not found (prevents user enumeration).
      * 3. Verify bcrypt hash via Hash::check (never compare plaintext in SQL).
      * 4. Reject deactivated accounts before token issuance.
      * 5. Mint a Sanctum personal access token for API guard (auth:sanctum).
+     * 6. Return token + authenticated user (job_title drives frontend routing).
      */
     public function login(LoginRequest $request): JsonResponse
     {
@@ -59,12 +63,18 @@ class AuthController extends Controller
         // createToken persists a row in personal_access_tokens; plainTextToken is shown once to the client.
         $token = $user->createToken('hrms-api-token')->plainTextToken;
 
+        // password is already excluded via User::$hidden; makeHidden is defense-in-depth.
+        $user->makeHidden(['password']);
+
         return response()->json([
             'success' => true,
             'message' => 'Authentication successful.',
             'data' => [
                 'token' => $token,
                 'token_type' => 'Bearer',
+                // Full user object — job_title is the RBAC discriminator for SPA routing.
+                'user' => $user,
+                // Top-level mirror for existing clients that read data.job_title directly.
                 'job_title' => $user->job_title,
             ],
         ], 200);

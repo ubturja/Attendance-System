@@ -6,7 +6,6 @@ import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import api, {
   ADMIN_HOME_PATH,
-  clearAuthSession,
   EMPLOYEE_DASHBOARD_PATH,
   setAuthToken,
   USER_ROLE_STORAGE_KEY,
@@ -20,13 +19,17 @@ interface LoginCredentials {
   password: string;
 }
 
-interface LoginMutationVariables extends LoginCredentials {
-  intendedRole: UserRole;
+interface LoginUser {
+  id: number;
+  name: string;
+  email: string;
+  job_title: UserRole;
 }
 
 interface LoginUserData {
   token: string;
   token_type: string;
+  user: LoginUser;
   job_title: UserRole;
 }
 
@@ -40,12 +43,8 @@ function getLoginErrorMessage(error: unknown): string {
   return getApiErrorMessage(error, 'Unable to sign in. Please try again.');
 }
 
-function getRoleMismatchMessage(intendedRole: UserRole): string {
-  if (intendedRole === 'Admin') {
-    return 'Unauthorized: You do not have Admin privileges.';
-  }
-
-  return 'Unauthorized: You do not have Employee privileges.';
+function isUserRole(value: string): value is UserRole {
+  return value === 'Admin' || value === 'Employee';
 }
 
 async function loginRequest(credentials: LoginCredentials): Promise<LoginSuccessResponse> {
@@ -60,26 +59,22 @@ export default function Login() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const loginMutation = useMutation({
-    mutationFn: ({ email, password }: LoginMutationVariables) =>
-      loginRequest({ email, password }),
-    onSuccess: (response, variables) => {
-      // Redirect must use job_title from this response — never localStorage.
-      const { token, job_title: role } = response.data;
-      const { intendedRole } = variables;
+    mutationFn: (credentials: LoginCredentials) => loginRequest(credentials),
+    onSuccess: (response) => {
+      const { token, user } = response.data;
+      const userRole = user.job_title;
 
-      if (role !== intendedRole) {
-        clearAuthSession();
-        queryClient.clear();
-        setErrorMessage(getRoleMismatchMessage(intendedRole));
+      if (!isUserRole(userRole)) {
+        setErrorMessage('Unable to determine account role. Please contact an administrator.');
         return;
       }
 
-      // Drop any leftover cache from a previous session before entering the app.
+      // Persist session before navigation so protected routes see a valid token/role.
       queryClient.clear();
       setAuthToken(token);
-      localStorage.setItem(USER_ROLE_STORAGE_KEY, role);
+      localStorage.setItem(USER_ROLE_STORAGE_KEY, userRole);
 
-      if (role === 'Admin') {
+      if (userRole === 'Admin') {
         navigate(ADMIN_HOME_PATH, { replace: true });
         return;
       }
@@ -92,17 +87,12 @@ export default function Login() {
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    // Role is chosen via the Admin / Employee buttons — Enter alone must not login.
     event.preventDefault();
-  }
-
-  function handleLogin(intendedRole: UserRole) {
     setErrorMessage(undefined);
-    loginMutation.mutate({ email, password, intendedRole });
+    loginMutation.mutate({ email, password });
   }
 
   const isPending = loginMutation.isPending;
-  const pendingRole = isPending ? loginMutation.variables?.intendedRole : undefined;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white to-brand-50 px-4 py-12">
@@ -120,7 +110,7 @@ export default function Login() {
             Sign in
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Enter your credentials and choose how you want to access the HRMS platform.
+            Enter your credentials to access the HRMS platform.
           </p>
         </div>
 
@@ -163,29 +153,14 @@ export default function Login() {
             disabled={isPending}
           />
 
-          <div className="flex flex-col gap-3">
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              className="w-full"
-              disabled={isPending}
-              onClick={() => handleLogin('Admin')}
-            >
-              {pendingRole === 'Admin' ? 'Logging in...' : 'Log In as Admin'}
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="w-full"
-              disabled={isPending}
-              onClick={() => handleLogin('Employee')}
-            >
-              {pendingRole === 'Employee' ? 'Logging in...' : 'Log In as Employee'}
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full bg-brand hover:bg-brand-600 text-white"
+            disabled={isPending}
+          >
+            {isPending ? 'Logging in...' : 'Log In'}
+          </Button>
         </form>
       </div>
     </div>

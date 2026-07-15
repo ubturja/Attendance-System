@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArchiveRestore, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
@@ -42,9 +43,9 @@ interface UpdateLeaveTypePayload {
   is_active: boolean;
 }
 
-async function fetchLeaveTypes(viewArchived: boolean): Promise<LeaveTypeRecord[]> {
+async function fetchLeaveTypes(isArchived: boolean): Promise<LeaveTypeRecord[]> {
   const response = await api.get<ApiSuccessResponse<LeaveTypeRecord[]>>('/admin/leave-types', {
-    params: viewArchived ? { status: 'archived' } : undefined,
+    params: isArchived ? { status: 'archived' } : undefined,
   });
   return response.data.data;
 }
@@ -100,7 +101,8 @@ function LeaveTypesTableSkeleton() {
 
 export default function LeaveTypes() {
   const queryClient = useQueryClient();
-  const [viewArchived, setViewArchived] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isArchived = searchParams.get('status') === 'archived';
   const [panelOpen, setPanelOpen] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
@@ -113,8 +115,8 @@ export default function LeaveTypes() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: [...queryKeys.leaveTypes.admin, viewArchived ? 'archived' : 'current'],
-    queryFn: () => fetchLeaveTypes(viewArchived),
+    queryKey: [...queryKeys.leaveTypes.admin, isArchived ? 'archived' : 'current'],
+    queryFn: () => fetchLeaveTypes(isArchived),
   });
 
   const createLeaveTypeMutation = useMutation({
@@ -220,7 +222,13 @@ export default function LeaveTypes() {
   function handleToggleArchiveView() {
     setActionError(undefined);
     setActionSuccess(undefined);
-    setViewArchived((current) => !current);
+
+    if (isArchived) {
+      setSearchParams({});
+      return;
+    }
+
+    setSearchParams({ status: 'archived' });
   }
 
   const isSaving = createLeaveTypeMutation.isPending;
@@ -246,16 +254,16 @@ export default function LeaveTypes() {
             Leave Types
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {viewArchived
+            {isArchived
               ? 'Archived leave codes retained for historical reports. Restore to use them again.'
               : 'Manage dynamic leave codes used in attendance and yearly balances.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="md" onClick={handleToggleArchiveView}>
-            {viewArchived ? 'Back to Active' : 'View Archived'}
+            {isArchived ? 'Back to Active' : 'View Archived'}
           </Button>
-          {!viewArchived ? (
+          {!isArchived ? (
             <Button type="button" variant="primary" size="md" onClick={() => setPanelOpen(true)}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Add New Leave Type
@@ -293,7 +301,7 @@ export default function LeaveTypes() {
               ) : leaveTypes.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={4} className="py-8 text-center text-sm text-slate-500">
-                    {viewArchived ? 'No archived leave types found.' : 'No leave types found.'}
+                    {isArchived ? 'No archived leave types found.' : 'No leave types found.'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -304,7 +312,7 @@ export default function LeaveTypes() {
                     </TableCell>
                     <TableCell>{row.name}</TableCell>
                     <TableCell className="align-middle">
-                      {viewArchived ? (
+                      {isArchived ? (
                         <Badge variant="inactive">Archived</Badge>
                       ) : (
                         <div className="flex items-center gap-3">
@@ -341,7 +349,7 @@ export default function LeaveTypes() {
                       )}
                     </TableCell>
                     <TableCell className="align-middle">
-                      {viewArchived ? (
+                      {isArchived ? (
                         <Button
                           type="button"
                           variant="ghost"

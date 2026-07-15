@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Calendar, ChevronDown, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert } from '../../components/ui/Alert';
 import api from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
@@ -31,6 +31,11 @@ interface YearlyReportData {
   rows: YearlyReportPivotRow[];
 }
 
+interface TeamOption {
+  id: number;
+  team_name: string;
+}
+
 function getCurrentYear(): number {
   return new Date().getFullYear();
 }
@@ -39,16 +44,28 @@ function formatDays(value: number | undefined): string {
   return (value ?? 0).toFixed(1);
 }
 
-function getPivotValue(row: YearlyReportPivotRow, code: string, suffix: 'assigned' | 'taken' | 'remaining'): number {
+function getPivotValue(
+  row: YearlyReportPivotRow,
+  code: string,
+  suffix: 'assigned' | 'taken' | 'remaining',
+): number {
   const key = `${code}_${suffix}` as keyof YearlyReportPivotRow;
   const value = row[key];
   return typeof value === 'number' ? value : 0;
 }
 
-async function fetchYearlyReport(year: number): Promise<YearlyReportData> {
+async function fetchYearlyReport(year: number, teamId: string): Promise<YearlyReportData> {
   const response = await api.get<ApiSuccessResponse<YearlyReportData>>('/reports/yearly', {
-    params: { year },
+    params: {
+      year,
+      ...(teamId !== '' ? { team_id: teamId } : {}),
+    },
   });
+  return response.data.data;
+}
+
+async function fetchTeams(): Promise<TeamOption[]> {
+  const response = await api.get<ApiSuccessResponse<TeamOption[]>>('/admin/teams');
   return response.data.data;
 }
 
@@ -60,19 +77,41 @@ const stickyTeam = 'sticky left-[9rem] z-20 bg-white group-hover:bg-brand-50/80'
 const SUB_COLUMN_LABELS = ['Assigned', 'Taken', 'Remaining'] as const;
 
 export default function YearlyReport() {
-  const [reportYear, setReportYear] = useState(getCurrentYear);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const teamId = searchParams.get('team_id') || '';
+  const yearParam = searchParams.get('year') || String(getCurrentYear());
+  const reportYear = Number.parseInt(yearParam, 10);
+  const resolvedYear = Number.isNaN(reportYear) ? getCurrentYear() : reportYear;
 
   const {
     data: report,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: queryKeys.reports.yearly(reportYear),
-    queryFn: () => fetchYearlyReport(reportYear),
+    queryKey: queryKeys.reports.yearly(resolvedYear, teamId),
+    queryFn: () => fetchYearlyReport(resolvedYear, teamId),
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: queryKeys.teams.admin,
+    queryFn: fetchTeams,
   });
 
   const leaveTypeColumns = report?.leave_type_columns ?? [];
   const rows = report?.rows ?? [];
+
+  function updateSearchParam(key: string, value: string): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === '') {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -100,11 +139,11 @@ export default function YearlyReport() {
               type="number"
               min={2000}
               max={2100}
-              value={reportYear}
+              value={resolvedYear}
               onChange={(event) => {
                 const parsed = Number.parseInt(event.target.value, 10);
                 if (!Number.isNaN(parsed)) {
-                  setReportYear(parsed);
+                  updateSearchParam('year', String(parsed));
                 }
               }}
               className={cn(
@@ -122,15 +161,19 @@ export default function YearlyReport() {
           <div className="relative">
             <select
               id="report-team"
-              disabled
-              title="Feature coming soon"
+              value={teamId}
+              onChange={(event) => updateSearchParam('team_id', event.target.value)}
               className={cn(
                 'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-700',
-                'disabled:cursor-not-allowed disabled:bg-slate-50',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
               )}
-              defaultValue=""
             >
               <option value="">All teams</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.team_name}
+                </option>
+              ))}
             </select>
             <ChevronDown
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"

@@ -74,8 +74,6 @@ class AuthController extends Controller
                 'token_type' => 'Bearer',
                 // Full user object — job_title is the RBAC discriminator for SPA routing.
                 'user' => $user,
-                // Top-level mirror for existing clients that read data.job_title directly.
-                'job_title' => $user->job_title,
             ],
         ], 200);
     }

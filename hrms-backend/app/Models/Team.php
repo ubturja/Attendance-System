@@ -9,25 +9,31 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * ERD Entity: teams
  *
  * Organizational unit that groups employees and snapshots team context on
  * attendance logs. A team may optionally designate one user as team leader
- * via `team_leader_id` (1:1 leader assignment per ERD).
+ * via `team_leader_id` (1:1 leader assignment per ERD). Soft-deleted teams
+ * are hidden from Admin catalogs but remain readable via withTrashed() for
+ * historical attendance and membership audit trails.
  *
  * @property int $id
  * @property string $team_name
  * @property int|null $team_leader_id
+ * @property \Illuminate\Support\Carbon|null $deleted_at
  */
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
     use HasFactory;
+    use SoftDeletes;
 
     /**
      * ERD schema does not define created_at / updated_at columns.
+     * SoftDeletes still manages deleted_at independently.
      */
     public $timestamps = false;
 
@@ -84,5 +90,14 @@ class Team extends Model
     public function attendanceLogs(): HasMany
     {
         return $this->hasMany(AttendanceLog::class, 'team_id');
+    }
+
+    /**
+     * Audit: teams.id → team_membership_histories.team_id (1:M).
+     * Join/leave periods for users previously or currently on this team.
+     */
+    public function historicalMembers(): HasMany
+    {
+        return $this->hasMany(TeamMembershipHistory::class, 'team_id');
     }
 }

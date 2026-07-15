@@ -11,6 +11,7 @@ use App\Models\LeaveType;
 use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -25,13 +26,16 @@ class UserController extends Controller
 {
     /**
      * List all user accounts with optional team relationship eager-loaded.
+     *
+     * Query: ?search=jane — matches name or email (case-insensitive LIKE).
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $currentYear = (int) date('Y');
+        $search = $request->query('search');
 
         // Eager-load team and current-year balances for Admin list rendering.
-        $users = User::query()
+        $usersQuery = User::query()
             ->with([
                 'team',
                 'yearlyLeaveRecords' => static function ($query) use ($currentYear): void {
@@ -40,8 +44,18 @@ class UserController extends Controller
                         ->with('leaveType');
                 },
             ])
-            ->orderBy('name')
-            ->get();
+            ->orderBy('name');
+
+        if (is_string($search) && trim($search) !== '') {
+            $term = '%'.trim($search).'%';
+            $usersQuery->where(static function ($query) use ($term): void {
+                $query
+                    ->where('name', 'like', $term)
+                    ->orWhere('email', 'like', $term);
+            });
+        }
+
+        $users = $usersQuery->get();
 
         return response()->json([
             'success' => true,

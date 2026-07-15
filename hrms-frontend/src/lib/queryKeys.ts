@@ -10,6 +10,7 @@ export const queryKeys = {
   },
   users: {
     admin: ['admin', 'users'] as const,
+    list: (search: string) => ['admin', 'users', 'list', search] as const,
   },
   teams: {
     admin: ['admin', 'teams'] as const,
@@ -17,9 +18,12 @@ export const queryKeys = {
   profile: ['profile'] as const,
   reports: {
     all: ['reports'] as const,
-    yearly: (year: number) => ['reports', 'yearly', year] as const,
-    daily: (date: string) => ['reports', 'daily', date] as const,
-    monthly: (year: number, month: number) => ['reports', 'monthly', year, month] as const,
+    yearly: (year: number, teamId: string) =>
+      ['reports', 'yearly', year, teamId] as const,
+    daily: (date: string, teamId: string) =>
+      ['reports', 'daily', date, teamId] as const,
+    monthly: (year: number, month: number, teamId: string) =>
+      ['reports', 'monthly', year, month, teamId] as const,
   },
 } as const;
 

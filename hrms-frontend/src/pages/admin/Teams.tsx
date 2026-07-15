@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Loader2, MoreHorizontal, Plus, UserMinus, UserPlus } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { ArchiveRestore, Loader2, MoreHorizontal, Plus, UserMinus, UserPlus } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -39,13 +40,24 @@ interface TeamMember {
   team_id?: number | null;
 }
 
+interface TeamMembershipHistoryRecord {
+  id: number;
+  team_id: number;
+  user_id: number;
+  joined_at: string | null;
+  left_at: string | null;
+  user?: TeamMember | null;
+}
+
 interface TeamRecord {
   id: number;
   team_name: string;
   team_leader_id: number | null;
+  deleted_at?: string | null;
   leader?: TeamLeader | null;
   team_leader?: TeamLeader | null;
-  users: TeamMember[];
+  users?: TeamMember[];
+  historical_members?: TeamMembershipHistoryRecord[];
 }
 
 interface UserRecord {
@@ -93,8 +105,10 @@ const EMPTY_CREATE_TEAM_FORM: CreateTeamFormState = {
   name: '',
 };
 
-async function fetchTeams(): Promise<TeamRecord[]> {
-  const response = await api.get<ApiSuccessResponse<TeamRecord[]>>('/admin/teams');
+async function fetchTeams(isArchived: boolean): Promise<TeamRecord[]> {
+  const response = await api.get<ApiSuccessResponse<TeamRecord[]>>('/admin/teams', {
+    params: isArchived ? { status: 'archived' } : undefined,
+  });
   return response.data.data;
 }
 
@@ -131,6 +145,13 @@ async function deleteTeam(teamId: number): Promise<void> {
   await api.delete(`/admin/teams/${teamId}`);
 }
 
+async function restoreTeam(teamId: number): Promise<TeamRecord> {
+  const response = await api.patch<ApiSuccessResponse<TeamRecord>>(
+    `/admin/teams/${teamId}/restore`,
+  );
+  return response.data.data;
+}
+
 async function saveEditTeamChanges({
   teamId,
   teamName,
@@ -160,8 +181,40 @@ function getTeamLeaderName(team: TeamRecord): string {
 }
 
 function getTeamStatus(team: TeamRecord): 'active' | 'inactive' {
-  const hasActiveMembers = team.users.some((member) => member.is_active);
+  const hasActiveMembers = (team.users ?? []).some((member) => member.is_active);
   return hasActiveMembers ? 'active' : 'inactive';
+}
+
+function getTeamMemberCount(team: TeamRecord, isArchived: boolean): number {
+  if (isArchived) {
+    const history = team.historical_members ?? [];
+    return new Set(history.map((entry) => entry.user_id)).size;
+  }
+
+  return (team.users ?? []).length;
+}
+
+function isTeamArchived(team: TeamRecord | null): boolean {
+  return team !== null && team.deleted_at != null && team.deleted_at !== '';
+}
+
+function formatAuditDate(value: string | null | undefined): string {
+  if (value === null || value === undefined || value.trim().length === 0) {
+    return '—';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function TeamsTableSkeleton() {
@@ -181,12 +234,16 @@ function TeamsTableSkeleton() {
 
 export default function Teams() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isArchived = searchParams.get('status') === 'archived';
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
   const [formState, setFormState] = useState<CreateTeamFormState>(EMPTY_CREATE_TEAM_FORM);
   const [formError, setFormError] = useState<string | undefined>();
   const [rosterError, setRosterError] = useState<string | undefined>();
   const [rosterSuccess, setRosterSuccess] = useState<string | undefined>();
+  const [actionError, setActionError] = useState<string | undefined>();
+  const [actionSuccess, setActionSuccess] = useState<string | undefined>();
   const [memberSearch, setMemberSearch] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   /** Draft roster — only persisted when Save Changes is clicked. */
@@ -201,14 +258,14 @@ export default function Teams() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: queryKeys.teams.admin,
-    queryFn: fetchTeams,
+    queryKey: [...queryKeys.teams.admin, isArchived ? 'archived' : 'current'],
+    queryFn: () => fetchTeams(isArchived),
   });
 
   const { data: allUsers = [] } = useQuery({
     queryKey: queryKeys.users.admin,
     queryFn: fetchUsers,
-    enabled: panelOpen && isEditMode,
+    enabled: panelOpen && isEditMode && !isArchived,
   });
 
   const editingTeam = useMemo(() => {
@@ -218,6 +275,9 @@ export default function Teams() {
 
     return teams.find((team) => team.id === editingTeamId) ?? null;
   }, [editingTeamId, teams]);
+
+  /** Read-only audit mode when the open team has been soft-deleted. */
+  const isViewOnly = isEditMode && isTeamArchived(editingTeam);
 
   const usersById = useMemo(() => {
     const map = new Map<number, UserRecord | TeamMember>();
@@ -259,7 +319,17 @@ export default function Teams() {
     teamLeaderId !== null && draftMemberIds.includes(teamLeaderId) ? teamLeaderId : null;
 
   // Delete guard uses persisted server roster (not unsaved draft removes).
-  const hasPersistedMembers = (editingTeam?.users.length ?? 0) > 0;
+  const hasPersistedMembers = (editingTeam?.users?.length ?? 0) > 0;
+
+  const historicalMembershipRows = useMemo(() => {
+    const history = editingTeam?.historical_members ?? [];
+
+    return [...history].sort((a, b) => {
+      const aJoined = a.joined_at ?? '';
+      const bJoined = b.joined_at ?? '';
+      return bJoined.localeCompare(aJoined);
+    });
+  }, [editingTeam]);
 
   // Available = unassigned on server, or currently on this team but staged for removal.
   // Never show employees assigned to a different team.
@@ -328,13 +398,32 @@ export default function Teams() {
   const deleteTeamMutation = useMutation({
     mutationFn: deleteTeam,
     onSuccess: () => {
+      setActionError(undefined);
+      setActionSuccess('Team successfully archived.');
       invalidateTeamAndUserQueries();
       handleClosePanel();
     },
     onError: (error) => {
+      setActionSuccess(undefined);
       setRosterSuccess(undefined);
       setRosterError(
-        getApiErrorMessage(error, 'Unable to delete team. Please try again.'),
+        getApiErrorMessage(error, 'Unable to archive team. Please try again.'),
+      );
+    },
+  });
+
+  const restoreTeamMutation = useMutation({
+    mutationFn: restoreTeam,
+    onSuccess: () => {
+      setActionError(undefined);
+      setActionSuccess('Team restored.');
+      invalidateTeamAndUserQueries();
+      handleClosePanel();
+    },
+    onError: (error) => {
+      setActionSuccess(undefined);
+      setActionError(
+        getApiErrorMessage(error, 'Unable to restore team. Please try again.'),
       );
     },
   });
@@ -354,7 +443,7 @@ export default function Teams() {
   }
 
   function handleOpenEditPanel(team: TeamRecord) {
-    const memberIds = team.users.map((member) => member.id);
+    const memberIds = (team.users ?? []).map((member) => member.id);
     setEditingTeamId(team.id);
     setFormState({ name: team.team_name });
     setFormError(undefined);
@@ -380,6 +469,27 @@ export default function Teams() {
     setDraftMemberIds([]);
     setOriginalMemberIds([]);
     setTeamLeaderId(null);
+  }
+
+  function handleToggleArchiveView() {
+    setActionError(undefined);
+    setActionSuccess(undefined);
+    handleClosePanel();
+
+    if (isArchived) {
+      setSearchParams({});
+      return;
+    }
+
+    setSearchParams({ status: 'archived' });
+  }
+
+  function handleRestoreTeam(teamId: number) {
+    setActionError(undefined);
+    setActionSuccess(undefined);
+    setRosterError(undefined);
+    setRosterSuccess(undefined);
+    restoreTeamMutation.mutate(teamId);
   }
 
   function handleSaveTeam() {
@@ -464,24 +574,46 @@ export default function Teams() {
   }
 
   const isSaving = createTeamMutation.isPending || saveEditTeamMutation.isPending;
-  const isPanelBusy = isSaving || deleteTeamMutation.isPending;
+  const isPanelBusy =
+    isSaving || deleteTeamMutation.isPending || restoreTeamMutation.isPending;
+  const restoringTeamId = restoreTeamMutation.isPending
+    ? restoreTeamMutation.variables
+    : undefined;
+  const isRowBusy = restoreTeamMutation.isPending || deleteTeamMutation.isPending;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
             Team Management
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Create teams, manage members, and track active membership.
+            {isArchived
+              ? 'Archived teams retained for membership history. Restore to use them again.'
+              : 'Create teams, manage members, and track active membership.'}
           </p>
         </div>
-        <Button type="button" variant="primary" size="md" onClick={handleOpenCreatePanel}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Create Team
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="md" onClick={handleToggleArchiveView}>
+            {isArchived ? 'Back to Active' : 'View Archived'}
+          </Button>
+          {!isArchived ? (
+            <Button type="button" variant="primary" size="md" onClick={handleOpenCreatePanel}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Create Team
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      {actionSuccess !== undefined ? (
+        <Alert variant="success">{actionSuccess}</Alert>
+      ) : null}
+
+      {actionError !== undefined ? (
+        <Alert variant="error">{actionError}</Alert>
+      ) : null}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <Table>
@@ -491,7 +623,7 @@ export default function Teams() {
               <TableHead>Team Leader</TableHead>
               <TableHead>Members</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-24 text-right">Actions</TableHead>
+              <TableHead className="w-40 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           {isLoading ? (
@@ -503,7 +635,7 @@ export default function Teams() {
               ) : teams.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-500">
-                    No teams found.
+                    {isArchived ? 'No archived teams found.' : 'No teams found.'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -516,23 +648,54 @@ export default function Teams() {
                         {team.team_name}
                       </TableCell>
                       <TableCell>{getTeamLeaderName(team)}</TableCell>
-                      <TableCell>{team.users.length}</TableCell>
+                      <TableCell>{getTeamMemberCount(team, isArchived)}</TableCell>
                       <TableCell>
-                        <Badge variant={status === 'active' ? 'active' : 'inactive'}>
-                          {status === 'active' ? 'Active' : 'Inactive'}
-                        </Badge>
+                        {isArchived ? (
+                          <Badge variant="inactive">Archived</Badge>
+                        ) : (
+                          <Badge variant={status === 'active' ? 'active' : 'inactive'}>
+                            {status === 'active' ? 'Active' : 'Inactive'}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 px-0"
-                          aria-label={`Edit ${team.team_name}`}
-                          onClick={() => handleOpenEditPanel(team)}
-                        >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        {isArchived ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isRowBusy}
+                              aria-label={`View details for ${team.team_name}`}
+                              onClick={() => handleOpenEditPanel(team)}
+                            >
+                              View Details
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isRowBusy}
+                              aria-label={`Restore ${team.team_name}`}
+                              onClick={() => handleRestoreTeam(team.id)}
+                              className="text-brand-600 hover:bg-brand-50 hover:text-brand"
+                            >
+                              <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
+                              {restoringTeamId === team.id ? 'Restoring...' : 'Restore'}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 px-0"
+                            aria-label={`Edit ${team.team_name}`}
+                            onClick={() => handleOpenEditPanel(team)}
+                          >
+                            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -546,14 +709,24 @@ export default function Teams() {
       <SlideOver
         isOpen={panelOpen}
         onClose={handleClosePanel}
-        title={isEditMode ? 'Edit Team' : 'Create New Team'}
+        title={
+          isViewOnly ? 'Team Audit Log' : isEditMode ? 'Edit Team' : 'Create New Team'
+        }
         description={
-          isEditMode
-            ? 'Roster edits are draft until you click Save Changes. Closing discards unsaved changes.'
-            : 'Add a new organizational team to assign employees.'
+          isViewOnly
+            ? 'Read-only membership paper trail for this archived team.'
+            : isEditMode
+              ? 'Roster edits are draft until you click Save Changes. Closing discards unsaved changes.'
+              : 'Add a new organizational team to assign employees.'
         }
       >
         <div className="flex flex-1 flex-col gap-5 p-6">
+          {isViewOnly && editingTeam?.deleted_at != null ? (
+            <Alert variant="warning">
+              This team was archived on {formatAuditDate(editingTeam.deleted_at)}.
+            </Alert>
+          ) : null}
+
           {formError !== undefined ? (
             <Alert variant="error">{formError}</Alert>
           ) : null}
@@ -571,7 +744,7 @@ export default function Teams() {
             label="Team Name"
             placeholder="e.g. Alpha Team"
             value={formState.name}
-            disabled={isPanelBusy}
+            disabled={isPanelBusy || isViewOnly}
             onChange={(event) => {
               setFormState({ name: event.target.value });
               if (formError !== undefined) {
@@ -583,7 +756,93 @@ export default function Teams() {
             }}
           />
 
-          {isEditMode ? (
+          {isViewOnly ? (
+            <>
+              <div className="flex w-full flex-col gap-1.5">
+                <label
+                  htmlFor="team-leader-archived"
+                  className="text-sm font-medium leading-none text-slate-700"
+                >
+                  Team Leader
+                </label>
+                <input
+                  id="team-leader-archived"
+                  type="text"
+                  value={editingTeam !== null ? getTeamLeaderName(editingTeam) : '—'}
+                  disabled
+                  className={cn(
+                    'h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-400',
+                    'cursor-not-allowed',
+                  )}
+                />
+              </div>
+
+              <div className="space-y-4 border-t border-slate-200 pt-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Previous Team Members</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Permanent audit of who belonged to this team and when they left.
+                  </p>
+                </div>
+
+                <div className="overflow-hidden rounded-md border border-slate-200">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Name</TableHead>
+                        <TableHead>Joined Date</TableHead>
+                        <TableHead>Removed Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {historicalMembershipRows.length === 0 ? (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell
+                            colSpan={3}
+                            className="py-8 text-center text-sm text-slate-500"
+                          >
+                            No membership history recorded for this team.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        historicalMembershipRows.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="font-medium text-slate-900">
+                              {entry.user?.name ?? '—'}
+                            </TableCell>
+                            <TableCell>{formatAuditDate(entry.joined_at)}</TableCell>
+                            <TableCell>{formatAuditDate(entry.left_at)}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-brand-100 text-brand-600 hover:bg-brand-50 hover:text-brand"
+                    disabled={isPanelBusy || editingTeamId === null}
+                    onClick={() => {
+                      if (editingTeamId !== null) {
+                        handleRestoreTeam(editingTeamId);
+                      }
+                    }}
+                  >
+                    <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
+                    {restoreTeamMutation.isPending ? 'Restoring...' : 'Restore Team'}
+                  </Button>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Restoring clears the archive flag so this team can be edited again.
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {isEditMode && !isViewOnly ? (
             <div className="flex w-full flex-col gap-1.5">
               <label
                 htmlFor="team-leader"
@@ -623,7 +882,7 @@ export default function Teams() {
             </div>
           ) : null}
 
-          {isEditMode ? (
+          {isEditMode && !isViewOnly ? (
             <div className="space-y-4 border-t border-slate-200 pt-5">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Team Roster</h3>
@@ -718,7 +977,7 @@ export default function Teams() {
                                 <input
                                   id={checkboxId}
                                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
                                   checked={isChecked}
                                   disabled={isPanelBusy}
                                   onChange={() => handleToggleUserSelection(user.id)}
@@ -769,21 +1028,21 @@ export default function Teams() {
                     disabled={isPanelBusy || hasPersistedMembers}
                     title={
                       hasPersistedMembers
-                        ? 'Cannot delete a team with active members.'
-                        : 'Delete this empty team'
+                        ? 'Cannot archive a team with active members.'
+                        : 'Archive this empty team'
                     }
                     onClick={handleDeleteTeam}
                   >
-                    {deleteTeamMutation.isPending ? 'Deleting...' : 'Delete Team'}
+                    {deleteTeamMutation.isPending ? 'Archiving...' : 'Delete Team'}
                   </Button>
                   {hasPersistedMembers ? (
                     <p className="mt-2 text-xs text-slate-500">
-                      Cannot delete a team with active members. Save removals first if the
+                      Cannot archive a team with active members. Save removals first if the
                       roster should be emptied.
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-slate-500">
-                      This team has no members and can be safely deleted.
+                      This team has no members and can be safely archived.
                     </p>
                   )}
                 </div>
@@ -796,20 +1055,22 @@ export default function Teams() {
           <Button type="button" variant="outline" onClick={handleClosePanel} disabled={isPanelBusy}>
             {isEditMode ? 'Close' : 'Cancel'}
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            onClick={handleSaveTeam}
-            disabled={isPanelBusy || formState.name.trim().length === 0}
-          >
-            {isSaving
-              ? isEditMode
-                ? 'Saving...'
-                : 'Creating...'
-              : isEditMode
-                ? 'Save Changes'
-                : 'Create Team'}
-          </Button>
+          {!isViewOnly ? (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleSaveTeam}
+              disabled={isPanelBusy || formState.name.trim().length === 0}
+            >
+              {isSaving
+                ? isEditMode
+                  ? 'Saving...'
+                  : 'Creating...'
+                : isEditMode
+                  ? 'Save Changes'
+                  : 'Create Team'}
+            </Button>
+          ) : null}
         </div>
       </SlideOver>
     </div>

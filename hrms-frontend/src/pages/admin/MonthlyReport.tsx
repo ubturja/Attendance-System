@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Calendar, ChevronDown, Download, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import {
   Table,
@@ -12,6 +12,7 @@ import {
 } from '../../components/ui/Table';
 import { TableErrorRow } from '../../components/ui/TableErrorRow';
 import api from '../../lib/api';
+import { queryKeys } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -43,6 +44,11 @@ interface MonthlyReportData {
   rows: MonthlyReportRow[];
 }
 
+interface TeamOption {
+  id: number;
+  team_name: string;
+}
+
 function getCurrentYearMonth(): { year: number; month: number } {
   const now = new Date();
   return {
@@ -63,10 +69,23 @@ function parseMonthInputValue(value: string): { year: number; month: number } {
   };
 }
 
-async function fetchMonthlyReport(year: number, month: number): Promise<MonthlyReportData> {
+async function fetchMonthlyReport(
+  year: number,
+  month: number,
+  teamId: string,
+): Promise<MonthlyReportData> {
   const response = await api.get<ApiSuccessResponse<MonthlyReportData>>('/reports/monthly', {
-    params: { year, month },
+    params: {
+      year,
+      month,
+      ...(teamId !== '' ? { team_id: teamId } : {}),
+    },
   });
+  return response.data.data;
+}
+
+async function fetchTeams(): Promise<TeamOption[]> {
+  const response = await api.get<ApiSuccessResponse<TeamOption[]>>('/admin/teams');
   return response.data.data;
 }
 
@@ -86,26 +105,55 @@ function MonthlyReportTableSkeleton() {
 }
 
 export default function MonthlyReport() {
-  const initialPeriod = getCurrentYearMonth();
-  const [reportYear, setReportYear] = useState(initialPeriod.year);
-  const [reportMonth, setReportMonth] = useState(initialPeriod.month);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const defaults = getCurrentYearMonth();
+
+  const teamId = searchParams.get('team_id') || '';
+  const yearParam = searchParams.get('year') || String(defaults.year);
+  const monthParam = searchParams.get('month') || String(defaults.month);
+
+  const parsedYear = Number.parseInt(yearParam, 10);
+  const parsedMonth = Number.parseInt(monthParam, 10);
+  const reportYear = Number.isNaN(parsedYear) ? defaults.year : parsedYear;
+  const reportMonth = Number.isNaN(parsedMonth) ? defaults.month : parsedMonth;
 
   const {
     data: report,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['reports', 'monthly', reportYear, reportMonth] as const,
-    queryFn: () => fetchMonthlyReport(reportYear, reportMonth),
+    queryKey: queryKeys.reports.monthly(reportYear, reportMonth, teamId),
+    queryFn: () => fetchMonthlyReport(reportYear, reportMonth, teamId),
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: queryKeys.teams.admin,
+    queryFn: fetchTeams,
   });
 
   const rows = report?.rows ?? [];
 
-  function handleMonthChange(value: string) {
+  function updateSearchParams(updates: Record<string, string>): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === '') {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+      }
+      return next;
+    });
+  }
+
+  function handleMonthChange(value: string): void {
     const { year, month } = parseMonthInputValue(value);
     if (!Number.isNaN(year) && !Number.isNaN(month)) {
-      setReportYear(year);
-      setReportMonth(month);
+      updateSearchParams({
+        year: String(year),
+        month: String(month),
+      });
     }
   }
 
@@ -150,15 +198,19 @@ export default function MonthlyReport() {
           <div className="relative">
             <select
               id="monthly-report-team"
-              disabled
-              title="Feature coming soon"
+              value={teamId}
+              onChange={(event) => updateSearchParams({ team_id: event.target.value })}
               className={cn(
                 'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-700',
-                'disabled:cursor-not-allowed disabled:bg-slate-50',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
               )}
-              defaultValue=""
             >
               <option value="">All teams</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.team_name}
+                </option>
+              ))}
             </select>
             <ChevronDown
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"

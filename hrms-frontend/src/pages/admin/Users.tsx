@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { CalendarPlus, ChevronDown, Loader2, Pencil, Plus } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CalendarPlus, ChevronDown, Loader2, Pencil, Plus, Search } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -150,8 +151,10 @@ function createEmptyAssignLeaveForm(): AssignLeaveFormState {
   };
 }
 
-async function fetchUsers(): Promise<UserRecord[]> {
-  const response = await api.get<ApiSuccessResponse<UserRecord[]>>('/admin/users');
+async function fetchUsers(search: string): Promise<UserRecord[]> {
+  const response = await api.get<ApiSuccessResponse<UserRecord[]>>('/admin/users', {
+    params: search !== '' ? { search } : undefined,
+  });
   return response.data.data;
 }
 
@@ -237,6 +240,9 @@ function UsersTableSkeleton() {
 
 export default function Users() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchQuery = searchParams.get('search') || '';
+
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [formState, setFormState] = useState<CreateUserFormState>(EMPTY_CREATE_USER_FORM);
@@ -256,8 +262,8 @@ export default function Users() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: queryKeys.users.admin,
-    queryFn: fetchUsers,
+    queryKey: queryKeys.users.list(searchQuery),
+    queryFn: () => fetchUsers(searchQuery),
   });
 
   const teamsQuery = useQuery({
@@ -269,6 +275,18 @@ export default function Users() {
     queryKey: queryKeys.leaveTypes.allocation,
     queryFn: fetchAllocationLeaveTypes,
   });
+
+  function handleSearchChange(value: string): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === '') {
+        next.delete('search');
+      } else {
+        next.set('search', value);
+      }
+      return next;
+    });
+  }
 
   const saveUserMutation = useMutation({
     mutationFn: saveUser,
@@ -424,6 +442,28 @@ export default function Users() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="relative min-w-[16rem] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            aria-hidden="true"
+          />
+          <input
+            id="users-search"
+            type="search"
+            value={searchQuery}
+            placeholder="Search by name or email"
+            aria-label="Search users by name or email"
+            onChange={(event) => handleSearchChange(event.target.value)}
+            className={cn(
+              'h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900',
+              'placeholder:text-slate-400',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+            )}
+          />
+        </div>
+      </div>
+
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <Table>
           <TableHeader>
@@ -446,7 +486,9 @@ export default function Users() {
               ) : users.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-500">
-                    No users found.
+                    {searchQuery !== ''
+                      ? 'No users match your search.'
+                      : 'No users found.'}
                   </TableCell>
                 </TableRow>
               ) : (

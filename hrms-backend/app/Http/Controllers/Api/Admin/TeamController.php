@@ -9,20 +9,38 @@ use App\Http\Requests\Admin\StoreTeamRequest;
 use App\Http\Requests\Admin\UpdateTeamRequest;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Admin CRUD controller for HRMS team management.
  *
  * Secured at the route layer via auth:sanctum + role:Admin middleware.
- * PRD: Teams cannot be deleted while active users remain assigned.
+ * Soft-deletes archive teams; restore brings them back into the active catalog.
+ * PRD: Teams cannot be archived while active users remain assigned.
  */
 class TeamController extends Controller
 {
     /**
-     * List all teams with leader and member relationships eager-loaded.
+     * List teams for the Admin catalog.
+     *
+     * Query: ?status=archived → only soft-deleted rows with membership history.
+     * Default → non-trashed teams with leader + current members.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        if ($request->query('status') === 'archived') {
+            $teams = Team::onlyTrashed()
+                ->with(['leader', 'historicalMembers.user'])
+                ->orderBy('team_name')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Archived teams retrieved successfully.',
+                'data' => $teams,
+            ], 200);
+        }
+
         // Eager-load leader + members to avoid N+1 on Admin team management screens.
         $teams = Team::query()
             ->with(['leader', 'users'])
@@ -95,9 +113,9 @@ class TeamController extends Controller
     }
 
     /**
-     * Remove a team record.
+     * Soft-delete (archive) a team record.
      *
-     * Business rule (PRD / SystemArchitecture): block deletion when active users
+     * Business rule (PRD / SystemArchitecture): block archival when active users
      * are still assigned to the team — team must be empty first.
      */
     public function destroy(Team $team): JsonResponse
@@ -107,20 +125,40 @@ class TeamController extends Controller
             ->where('is_active', true)
             ->exists();
 
-        // Abort before DELETE when active assignments remain — 422 per API contract.
+        // Abort before soft-delete when active assignments remain — 422 per API contract.
         if ($hasActiveUsers) {
             return response()->json([
                 'success' => false,
-                'message' => 'The team must be empty before it can be deleted.',
+                'message' => 'The team must be empty before it can be archived.',
             ], 422);
         }
 
-        // Safe to delete — no active users attached; DB restrict FKs on attendance_logs may still apply.
+        // Soft delete — sets deleted_at; historical FKs and membership history remain intact.
         $team->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Team deleted successfully.',
+            'message' => 'Team successfully archived.',
+            'data' => null,
+        ], 200);
+    }
+
+    /**
+     * Restore a soft-deleted team (Admin only).
+     *
+     * Clears deleted_at so the team reappears in the active Admin catalog.
+     */
+    public function restore(int $id): JsonResponse
+    {
+        $team = Team::onlyTrashed()->findOrFail($id);
+        $team->restore();
+
+        $team->load(['leader', 'users', 'historicalMembers.user']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Team restored.',
+            'data' => $team,
         ], 200);
     }
 }

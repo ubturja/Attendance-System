@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calendar, ChevronDown, Download, Loader2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import {
@@ -46,6 +47,11 @@ interface DailyReportData {
   records: DailyReportRecord[];
 }
 
+interface TeamOption {
+  id: number;
+  team_name: string;
+}
+
 interface UpdateAttendancePayload {
   attendanceLogId: number;
   code: string;
@@ -64,10 +70,18 @@ function resolveDisplayCode(record: DailyReportRecord): string {
   return record.submitted_code ?? record.leave_type_code ?? 'O';
 }
 
-async function fetchDailyReport(date: string): Promise<DailyReportData> {
+async function fetchDailyReport(date: string, teamId: string): Promise<DailyReportData> {
   const response = await api.get<ApiSuccessResponse<DailyReportData>>('/reports/daily', {
-    params: { date },
+    params: {
+      date,
+      ...(teamId !== '' ? { team_id: teamId } : {}),
+    },
   });
+  return response.data.data;
+}
+
+async function fetchTeams(): Promise<TeamOption[]> {
+  const response = await api.get<ApiSuccessResponse<TeamOption[]>>('/admin/teams');
   return response.data.data;
 }
 
@@ -158,9 +172,12 @@ function AttendanceCodeCell({
 
 export default function DailyReport() {
   const queryClient = useQueryClient();
-  const [reportDate, setReportDate] = useState(getTodayDateString);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [savingRowId, setSavingRowId] = useState<number | null>(null);
   const [overrideError, setOverrideError] = useState<string | undefined>();
+
+  const teamId = searchParams.get('team_id') || '';
+  const reportDate = searchParams.get('date') || getTodayDateString();
 
   const { data: profile } = useCurrentProfile();
   const isAdmin = profile?.job_title === 'Admin';
@@ -170,8 +187,13 @@ export default function DailyReport() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: queryKeys.reports.daily(reportDate),
-    queryFn: () => fetchDailyReport(reportDate),
+    queryKey: queryKeys.reports.daily(reportDate, teamId),
+    queryFn: () => fetchDailyReport(reportDate, teamId),
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: queryKeys.teams.admin,
+    queryFn: fetchTeams,
   });
 
   const leaveTypesQuery = useQuery({
@@ -206,6 +228,18 @@ export default function DailyReport() {
   });
 
   const records = report?.records ?? [];
+
+  function updateSearchParam(key: string, value: string): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === '') {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+      return next;
+    });
+  }
 
   function handleCodeChange(record: DailyReportRecord, code: string) {
     const currentCode = resolveDisplayCode(record);
@@ -248,7 +282,7 @@ export default function DailyReport() {
               id="daily-report-date"
               type="date"
               value={reportDate}
-              onChange={(event) => setReportDate(event.target.value)}
+              onChange={(event) => updateSearchParam('date', event.target.value)}
               className={cn(
                 'h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
@@ -264,15 +298,19 @@ export default function DailyReport() {
           <div className="relative">
             <select
               id="daily-report-team"
-              disabled
-              title="Feature coming soon"
+              value={teamId}
+              onChange={(event) => updateSearchParam('team_id', event.target.value)}
               className={cn(
                 'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-700',
-                'disabled:cursor-not-allowed disabled:bg-slate-50',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
               )}
-              defaultValue=""
             >
               <option value="">All teams</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.team_name}
+                </option>
+              ))}
             </select>
             <ChevronDown
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"

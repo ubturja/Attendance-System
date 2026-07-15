@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         // Module 2: Team & User Management API — full CRUD for HR Admins.
         Route::apiResource('users', UserController::class);
         Route::apiResource('teams', TeamController::class);
+        Route::patch('/teams/{id}/restore', [TeamController::class, 'restore']);
 
         // ── Module 3: Dynamic Leave — Admin catalog mutations (create, toggle, archive, restore).
         Route::get('/leave-types', [LeaveTypeController::class, 'adminIndex']);

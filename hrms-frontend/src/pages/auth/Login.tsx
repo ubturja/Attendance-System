@@ -30,7 +30,6 @@ interface LoginUserData {
   token: string;
   token_type: string;
   user: LoginUser;
-  job_title: UserRole;
 }
 
 interface LoginSuccessResponse {

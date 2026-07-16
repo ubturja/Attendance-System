@@ -55,9 +55,8 @@ class AuthController extends Controller
         // Block token issuance for deactivated HRMS accounts (is_active ERD flag).
         if (! $user->is_active) {
             return response()->json([
-                'success' => false,
-                'message' => 'This account has been deactivated.',
-            ], 401);
+                'message' => 'Your account has been temporarily deactivated. Contact the admin for further information.',
+            ], 403);
         }
 
         // createToken persists a row in personal_access_tokens; plainTextToken is shown once to the client.

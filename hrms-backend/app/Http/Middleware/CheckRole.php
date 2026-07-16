@@ -13,26 +13,23 @@ use Symfony\Component\HttpFoundation\Response;
  * RBAC middleware for the HRMS API.
  *
  * Enforces route-level access control by comparing the authenticated user's
- * `job_title` (ERD ENUM: Admin | Employee) against a required role passed
- * as a middleware parameter. Must be applied after `auth:sanctum` so that
+ * `job_title` (ERD ENUM: Admin | Employee) against one or more allowed roles
+ * passed as middleware parameters. Must be applied after `auth:sanctum` so that
  * `$request->user()` resolves from the Bearer token.
  *
- * Usage (when routes are defined): `->middleware(['auth:sanctum', 'role:Admin'])`
+ * Usage:
+ *   ->middleware(['auth:sanctum', 'role:Admin'])
+ *   ->middleware(['auth:sanctum', 'role:Admin,Employee'])
  */
 class CheckRole
 {
     /**
-     * Verify the authenticated user's job_title matches the required role.
-     *
-     * Role verification logic:
-     * 1. Resolve the authenticated user from the Sanctum token (expects prior auth middleware).
-     * 2. Compare `job_title` to the `$role` route parameter using strict equality.
-     * 3. Abort with 403 Forbidden JSON if the values differ — no controller execution.
+     * Verify the authenticated user's job_title is in the allowed role set.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     * @param  string  $role  Required job_title value (e.g., "Admin", "Employee").
+     * @param  string  ...$roles  One or more allowed job_title values (e.g. Admin, Employee).
      */
-    public function handle(Request $request, Closure $next, string $role): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
         $user = $request->user();
 
@@ -44,8 +41,17 @@ class CheckRole
             ], 401);
         }
 
-        // Strict comparison against ERD job_title ENUM — Admin vs Employee RBAC gate.
-        if ($user->job_title !== $role) {
+        $allowedRoles = array_values(array_filter(
+            array_map(static fn (string $role): string => trim($role), $roles),
+            static fn (string $role): bool => $role !== '',
+        ));
+
+        if ($allowedRoles === []) {
+            return $this->forbiddenResponse('Forbidden. Insufficient role privileges.');
+        }
+
+        // Strict comparison against ERD job_title ENUM — multi-role routes accept any match.
+        if (! in_array($user->job_title, $allowedRoles, true)) {
             return $this->forbiddenResponse('Forbidden. Insufficient role privileges.');
         }
 

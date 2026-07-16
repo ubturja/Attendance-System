@@ -22,7 +22,8 @@ class DailyReportRequest extends ApiFormRequest
     public function rules(): array
     {
         return [
-            'date' => ['required', 'date'],
+            // Optional — defaults to today in ReportController::daily.
+            'date' => ['sometimes', 'nullable', 'date'],
             'team_id' => ['nullable', 'integer', 'exists:teams,id'],
         ];
     }

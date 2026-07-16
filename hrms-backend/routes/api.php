@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\Api\Admin\LeaveRolloverController;
 use App\Http\Controllers\Api\Admin\TeamController;
 use App\Http\Controllers\Api\Admin\UserController;
@@ -37,24 +38,29 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // Token revocation — authenticated users only.
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // ── Module 4: Fractional Attendance Processing API (Employee + Admin) ────
-    // Bulk attendance submission with variant mapping (AO/OA→A 0.5, etc.).
-    Route::post('/attendance', [AttendanceController::class, 'store']);
+    // ── Personal dashboard (Admin + Employee) ────────────────────────────────
+    // Controllers scope all data via $request->user() — no role-specific user IDs.
+    Route::middleware(['role:Admin,Employee'])->group(function (): void {
+        // Module 4: bulk attendance submission (self / team-scoped for Employees).
+        Route::post('/attendance', [AttendanceController::class, 'store']);
+
+        // Profile + current-year leave balances + team roster for the dashboard.
+        Route::get('/profile', [ProfileController::class, 'show']);
+
+        // Module 3 (read): active leave types for attendance dropdowns.
+        Route::get('/leave-types', [LeaveTypeController::class, 'index']);
+    });
+
     // Admin daily-report correction — replaces code on an existing log row.
     Route::put('/attendance/{attendanceLog}', [AttendanceController::class, 'update'])
         ->middleware(['role:Admin']);
-
-    // Employee read-only dashboard — profile + team-scoped colleague roster.
-    Route::get('/profile', [ProfileController::class, 'show']);
-
-    // ── Module 3 (read): Dynamic Leave — active types for attendance dropdowns ─ // HighLevelArchitecture.md: GET /api/leave-types (WHERE is_active = true).
-    Route::get('/leave-types', [LeaveTypeController::class, 'index']);
 
     // ── Module 2 & 3 (Admin): Team, User, Leave, and Allocation management ───
     Route::middleware(['role:Admin'])->prefix('admin')->group(function (): void {
 
         // Module 2: Team & User Management API — full CRUD for HR Admins.
         Route::apiResource('users', UserController::class);
+        Route::patch('/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('teams', TeamController::class);
         Route::patch('/teams/{id}/restore', [TeamController::class, 'restore']);
 
@@ -72,6 +78,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
         // Module 3: Manual HR Control — copy source_year allocations to target_year (idempotent).
         Route::post('/leave-rollover', [LeaveRolloverController::class, 'store']);
+
+        // Module 5 (Admin alias): Daily report + attendance upsert with audit trail.
+        Route::get('/reports/daily', [ReportController::class, 'daily']);
+        Route::post('/reports/daily/update', [AdminAttendanceController::class, 'adminUpdate']);
     });
 
     // ── Module 5: Pivot Reporting Engine (Admin only) ────────────────────────

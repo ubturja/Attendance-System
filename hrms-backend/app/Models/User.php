@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -18,7 +19,8 @@ use Laravel\Sanctum\HasApiTokens;
  *
  * Core identity and authentication model for Admin and Employee accounts.
  * Integrates with Laravel Sanctum (token auth) and CheckRole middleware via
- * the `job_title` RBAC discriminator.
+ * the `job_title` RBAC discriminator. Soft-deleted users are excluded from
+ * default queries and authentication automatically via SoftDeletes.
  *
  * @property int $id
  * @property string $name
@@ -32,14 +34,17 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string|null $work_type
  * @property bool $is_active
  * @property int|null $team_id
+ * @property \Illuminate\Support\Carbon|null $deleted_at
  */
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+    use SoftDeletes;
 
     /**
      * ERD schema does not define created_at / updated_at columns.
+     * SoftDeletes still manages deleted_at independently.
      */
     public $timestamps = false;
 

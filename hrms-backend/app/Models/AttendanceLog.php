@@ -14,12 +14,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * team context at log time for historical accuracy when users change teams.
  * Non-leave codes (W, O, X) persist with leave_type_id = NULL per business rules.
  *
+ * Admin overrides set updated_by + updated_at for audit trail.
+ *
  * @property int $id
  * @property int $user_id
  * @property int $team_id
  * @property \Illuminate\Support\Carbon $date
  * @property string|null $submitted_code
  * @property int|null $leave_type_id
+ * @property int|null $updated_by
+ * @property \Illuminate\Support\Carbon|null $updated_at
  */
 class AttendanceLog extends Model
 {
@@ -29,9 +33,9 @@ class AttendanceLog extends Model
     protected $table = 'attendance_logs';
 
     /**
-     * ERD schema does not define created_at / updated_at columns.
+     * ERD rows have no created_at. Admin edits maintain updated_at only.
      */
-    public $timestamps = false;
+    public const CREATED_AT = null;
 
     /**
      * Mass-assignable attributes — explicit whitelist prevents assignment
@@ -45,6 +49,7 @@ class AttendanceLog extends Model
         'date',
         'submitted_code',
         'leave_type_id',
+        'updated_by',
     ];
 
     /**
@@ -57,6 +62,8 @@ class AttendanceLog extends Model
         'team_id' => 'integer',
         'date' => 'date',
         'leave_type_id' => 'integer',
+        'updated_by' => 'integer',
+        'updated_at' => 'datetime',
     ];
 
     /**
@@ -85,5 +92,13 @@ class AttendanceLog extends Model
     public function leaveType(): BelongsTo
     {
         return $this->belongsTo(LeaveType::class, 'leave_type_id')->withTrashed();
+    }
+
+    /**
+     * Admin who last overrode this attendance row (null until an edit occurs).
+     */
+    public function editor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 }

@@ -25,14 +25,16 @@ use Illuminate\Support\Facades\Hash;
 class UserController extends Controller
 {
     /**
-     * List all user accounts with optional team relationship eager-loaded.
+     * List user accounts with optional team relationship eager-loaded.
      *
+     * Query: ?status=archived — only soft-deleted (offboarded) users.
      * Query: ?search=jane — matches name or email (case-insensitive LIKE).
      */
     public function index(Request $request): JsonResponse
     {
         $currentYear = (int) date('Y');
         $search = $request->query('search');
+        $isArchived = $request->status === 'archived';
 
         // Eager-load team and current-year balances for Admin list rendering.
         $usersQuery = User::query()
@@ -45,6 +47,10 @@ class UserController extends Controller
                 },
             ])
             ->orderBy('name');
+
+        if ($isArchived) {
+            $usersQuery->onlyTrashed();
+        }
 
         if (is_string($search) && trim($search) !== '') {
             $term = '%'.trim($search).'%';
@@ -59,7 +65,9 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Users retrieved successfully.',
+            'message' => $isArchived
+                ? 'Archived users retrieved successfully.'
+                : 'Users retrieved successfully.',
             'data' => $users,
         ], 200);
     }
@@ -149,11 +157,21 @@ class UserController extends Controller
 
     /**
      * Update mutable user profile fields (PRD-immutable fields excluded by UpdateUserRequest).
+     *
+     * Optional password reset: when password is filled, hash and persist it;
+     * otherwise leave existing credentials unchanged.
      */
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
         // UpdateUserRequest blocks name, email, passport_number at validation boundary.
         $validated = $request->validated();
+
+        if ($request->filled('password')) {
+            // Hash plaintext before fill — hashed cast skips already-hashed values.
+            $validated['password'] = Hash::make($request->password);
+        } else {
+            unset($validated['password']);
+        }
 
         // fill() respects $fillable — only vetted keys are written to the row.
         $user->fill($validated);
@@ -171,19 +189,39 @@ class UserController extends Controller
     }
 
     /**
-     * Remove a user account from the system.
+     * Soft-delete (archive / offboard) a user account.
      *
-     * DB-level restrictOnDelete on attendance_logs may block hard deletes
-     * when historical records exist — surfaced as a query exception upstream.
+     * Sets deleted_at; historical attendance and leave rows remain intact.
+     * Soft-deleted users cannot authenticate (Eloquent user provider).
      */
     public function destroy(User $user): JsonResponse
     {
-        // Hard delete — restrict FKs on attendance_logs enforce audit trail integrity.
         $user->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'User deleted successfully.',
+            'message' => 'User successfully archived.',
+            'data' => null,
+        ], 200);
+    }
+
+    /**
+     * Restore a soft-deleted user (Admin only).
+     *
+     * Clears deleted_at so the account reappears in the active Admin catalog
+     * and can authenticate again.
+     */
+    public function restore(int $id): JsonResponse
+    {
+        $user = User::onlyTrashed()->findOrFail($id);
+        $user->restore();
+
+        $user->load('team');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User restored.',
+            'data' => $user,
         ], 200);
     }
 }

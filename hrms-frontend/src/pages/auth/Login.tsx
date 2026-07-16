@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
+import { Eye } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
@@ -12,6 +13,7 @@ import api, {
 } from '../../lib/api';
 import { getApiErrorMessage } from '../../lib/errors';
 import { queryClient } from '../../lib/queryClient';
+import { cn } from '../../lib/utils';
 import { type UserRole } from '../../components/layout/ProtectedRoute';
 
 interface LoginCredentials {
@@ -55,6 +57,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const loginMutation = useMutation({
@@ -135,22 +138,50 @@ export default function Login() {
             disabled={isPending}
           />
 
-          <Input
-            id="login-password"
-            label="Password"
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            placeholder="Enter your password"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              if (errorMessage !== undefined) {
-                setErrorMessage(undefined);
-              }
-            }}
-            disabled={isPending}
-          />
+          <div className="flex w-full flex-col gap-1.5">
+            <label
+              htmlFor="login-password"
+              className="text-sm font-medium leading-none text-slate-700"
+            >
+              Password
+            </label>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                className="pr-10"
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  if (errorMessage !== undefined) {
+                    setErrorMessage(undefined);
+                  }
+                }}
+                disabled={isPending}
+              />
+              <button
+                type="button"
+                disabled={isPending}
+                className={cn(
+                  'absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400',
+                  'hover:text-slate-600',
+                  'disabled:cursor-not-allowed disabled:opacity-50',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                )}
+                aria-label="Hold to show password"
+                onMouseDown={() => setShowPassword(true)}
+                onMouseUp={() => setShowPassword(false)}
+                onMouseLeave={() => setShowPassword(false)}
+                onTouchStart={() => setShowPassword(true)}
+                onTouchEnd={() => setShowPassword(false)}
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
 
           <Button
             type="submit"

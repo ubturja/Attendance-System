@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
   ClipboardList,
+  LayoutDashboard,
   LogOut,
   Users,
   UsersRound,
@@ -20,6 +21,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
   { label: 'Users', to: '/admin/users', icon: Users },
   { label: 'Teams', to: '/admin/teams', icon: UsersRound },
   { label: 'Leave Types', to: '/admin/leave-types', icon: CalendarDays },

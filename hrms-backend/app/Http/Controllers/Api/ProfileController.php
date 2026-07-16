@@ -6,90 +6,83 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\UserYearlyLeaveRecord;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Employee read-only profile dashboard data provider.
+ * Personal profile / dashboard data provider (Admin + Employee).
  *
- * PRD (info.md): Employees have read-only access to their own profile and may
+ * PRD (info.md): Callers have read-only access to their own profile and may
  * only see colleagues sharing the same team_id. This endpoint scopes ALL data
  * to the authenticated Sanctum token holder — never accepts a user ID parameter.
  *
- * Route middleware (when wired): auth:sanctum (Admin and Employee both permitted).
+ * Route middleware: auth:sanctum + role:Admin,Employee.
  */
 class ProfileController extends Controller
 {
     /**
-     * Return the authenticated user's profile with team-scoped colleague roster.
+     * Return the authenticated user's profile, current-year leave balances,
+     * calculated total absences, and team-scoped colleague roster.
      *
      * Scoping logic:
      * 1. Identity is resolved exclusively from the Bearer token ($request->user()).
      *    No route parameter can substitute another user's ID — prevents IDOR.
-     * 2. team relationship loads the employee's assigned organizational unit.
-     * 3. team.users loads ONLY colleagues sharing the same team_id FK (ERD 1:M).
-     *    This roster defines who the Employee may submit attendance for (self + team).
-     * 4. If team_id is NULL, team and colleagues are absent — employee has no team scope.
+     * 2. leave_balances are loaded for the current calendar year with leaveType.
+     * 3. total_absences is the sum of taken_days across those balance rows
+     *    (fractional codes like AO/OA are already reflected in taken_days).
+     * 4. team.users loads ONLY colleagues sharing the same team_id FK (ERD 1:M).
      *
-     * Sensitive field protection:
-     * - User::$hidden excludes `password` from JSON on the profile AND nested team.users.
-     * - Sanctum tokens relation is NOT eager-loaded — token hashes never serialized.
-     *
-     * JSON response (200):
+     * JSON response (200) data shape (key fields):
      * {
-     *   "success": true,
-     *   "message": "Profile retrieved successfully.",
-     *   "data": {
-     *     "id": 5,
-     *     "name": "Jane Doe",
-     *     "email": "jane@example.com",
-     *     "job_title": "Employee",
-     *     "team_id": 2,
-     *     "team": {
-     *       "id": 2,
-     *       "team_name": "Engineering",
-     *       "users": [
-     *         { "id": 5, "name": "Jane Doe", "team_id": 2 },
-     *         { "id": 7, "name": "John Smith", "team_id": 2 }
-     *       ]
-     *     }
-     *   }
+     *   "id": 5,
+     *   "name": "Jane Doe",
+     *   "team": { "id": 2, "team_name": "Engineering", "users": [...] },
+     *   "leave_balances": [ { "leave_type_id": 1, "assigned_days": 14, "taken_days": 2, ... } ],
+     *   "total_absences": 2.0,
+     *   "yearly_leave_records": [ ... ] // same as leave_balances for existing SPA clients
      * }
      */
     public function show(Request $request): JsonResponse
     {
-        /** @var User $authenticatedUser */
-        $authenticatedUser = $request->user();
-        $currentYear = (int) date('Y');
+        /** @var User $user */
+        $user = $request->user();
+        $currentYear = (int) now()->year;
 
-        // Re-fetch with eager loading to prevent N+1 when serializing team + colleagues.
-        // findOrFail on own ID preserves token-scoped identity — same user, enriched relations.
+        // Current-year leave balances for dashboard leave cards (dynamic, not hardcoded).
+        $leaveBalances = UserYearlyLeaveRecord::query()
+            ->with('leaveType')
+            ->where('user_id', $user->id)
+            ->where('year', $currentYear)
+            ->orderBy('leave_type_id')
+            ->get();
+
+        // Total absences = cumulative taken_days for the year (supports half-day deductions).
+        // Domain has no attendance_logs.status='Absent'; leave usage lives on balance rows.
+        $totalAbsences = round((float) $leaveBalances->sum('taken_days'), 2);
+
+        // Re-fetch profile with team + colleagues; balances are attached explicitly below.
         $profile = User::query()
             ->with([
-                // Load assigned team container (null when team_id is unset).
                 'team',
-                // Load colleague roster scoped implicitly by teams.id → users.team_id (ERD).
-                // Active-only filter: deactivated accounts excluded from attendance submission UI.
                 'team.users' => fn ($query) => $query
                     ->where('is_active', true)
                     ->orderBy('name'),
-                // Current-year leave balances for employee dashboard stat cards.
-                'yearlyLeaveRecords' => static function ($query) use ($currentYear): void {
-                    $query
-                        ->where('year', $currentYear)
-                        ->with('leaveType');
-                },
             ])
-            ->findOrFail($authenticatedUser->id);
+            ->findOrFail($user->id);
 
-        // Defense-in-depth: confirm $hidden strips credentials before JSON encoding.
-        // User model $hidden = ['password'] — nested team.users inherit the same rule.
         $profile->makeHidden(['password']);
+
+        $payload = $profile->toArray();
+        $payload['leave_balances'] = $leaveBalances;
+        $payload['total_absences'] = $totalAbsences;
+        // Backward-compatible alias used by existing Admin/Employee Dashboard clients.
+        $payload['yearly_leave_records'] = $leaveBalances;
 
         return response()->json([
             'success' => true,
             'message' => 'Profile retrieved successfully.',
-            'data' => $profile,
+            'data' => $payload,
         ], 200);
     }
 }

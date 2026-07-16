@@ -215,6 +215,129 @@ class AttendanceSecurityTest extends TestCase
         $this->assertSame(9.5, (float) $balance->remaining_days);
     }
 
+    public function test_weekend_leave_is_logged_without_charging_leave_balance(): void
+    {
+        $team = Team::factory()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+        $annualLeave = LeaveType::factory()->annual()->create();
+
+        $balance = UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $annualLeave->id,
+            'year' => 2026,
+            'assigned_days' => 10.00,
+            'taken_days' => 2.00,
+        ]);
+
+        // Saturday 2026-07-18 — must not drain ledger.
+        $weekendDate = '2026-07-18';
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => $weekendDate,
+                    'code' => 'A',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $this->assertTrue(
+            AttendanceLog::query()
+                ->where('user_id', $employee->id)
+                ->whereDate('date', $weekendDate)
+                ->where('submitted_code', 'A')
+                ->where('leave_type_id', $annualLeave->id)
+                ->exists(),
+        );
+
+        $balance->refresh();
+        $this->assertSame(2.0, (float) $balance->taken_days);
+        $this->assertSame(8.0, (float) $balance->remaining_days);
+    }
+
+    public function test_weekday_leave_still_charges_leave_balance(): void
+    {
+        $team = Team::factory()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+        $annualLeave = LeaveType::factory()->annual()->create();
+
+        $balance = UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $annualLeave->id,
+            'year' => 2026,
+            'assigned_days' => 10.00,
+            'taken_days' => 2.00,
+        ]);
+
+        // Monday 2026-07-20 — full-day leave must charge 1.0.
+        $weekdayDate = '2026-07-20';
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => $weekdayDate,
+                    'code' => 'A',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated();
+
+        $balance->refresh();
+        $this->assertSame(3.0, (float) $balance->taken_days);
+        $this->assertSame(7.0, (float) $balance->remaining_days);
+    }
+
+    public function test_admin_weekend_upsert_does_not_charge_leave_balance(): void
+    {
+        $team = Team::factory()->create();
+        $admin = User::factory()->admin()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+        $sickLeave = LeaveType::factory()->create([
+            'leave_type_code' => 'S',
+            'name' => 'Sick Leave',
+        ]);
+
+        $balance = UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $sickLeave->id,
+            'year' => 2026,
+            'assigned_days' => 14.00,
+            'taken_days' => 1.00,
+        ]);
+
+        // Sunday 2026-07-19
+        $weekendDate = '2026-07-19';
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->postJson('/api/admin/reports/daily/update', [
+            'user_id' => $employee->id,
+            'date' => $weekendDate,
+            'code' => 'S',
+        ]);
+
+        $response->assertOk();
+        $this->assertTrue(
+            AttendanceLog::query()
+                ->where('user_id', $employee->id)
+                ->whereDate('date', $weekendDate)
+                ->where('submitted_code', 'S')
+                ->where('leave_type_id', $sickLeave->id)
+                ->exists(),
+        );
+
+        $balance->refresh();
+        $this->assertSame(1.0, (float) $balance->taken_days);
+    }
+
     public function test_employee_cannot_override_attendance_code(): void
     {
         $team = Team::factory()->create();

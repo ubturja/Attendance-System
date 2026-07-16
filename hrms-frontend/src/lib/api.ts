@@ -13,7 +13,7 @@ export const USER_ROLE_STORAGE_KEY = 'user_role' as const;
 
 export const LOGIN_PATH = '/login' as const;
 export const EMPLOYEE_DASHBOARD_PATH = '/employee/dashboard' as const;
-export const ADMIN_HOME_PATH = '/admin/users' as const;
+export const ADMIN_HOME_PATH = '/admin/dashboard' as const;
 
 type SessionUserRole = 'Admin' | 'Employee';
 

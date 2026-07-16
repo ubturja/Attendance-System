@@ -26,6 +26,9 @@ class UpdateUserRequest extends ApiFormRequest
             // RBAC role may be changed by Admin (e.g., promote to Admin).
             'job_title' => ['sometimes', 'string', Rule::in(['Admin', 'Employee'])],
 
+            // Optional admin password reset — omit or null to leave credentials unchanged.
+            'password' => ['nullable', 'string', 'min:8'],
+
             // Demographic and contact fields remain editable.
             'nationality' => ['sometimes', 'nullable', 'string'],
             'phone_number' => ['sometimes', 'nullable', 'string', 'max:50'],

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AdminDailyAttendanceUpdateRequest;
 use App\Http\Requests\StoreAttendanceRequest;
 use App\Http\Requests\UpdateAttendanceRequest;
 use App\Models\AttendanceLog;
@@ -14,6 +15,7 @@ use App\Models\UserYearlyLeaveRecord;
 use App\Services\Attendance\AttendanceValidationException;
 use App\Services\Attendance\AttendanceVariantMapper;
 use App\Services\Attendance\MappedAttendanceCode;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -24,14 +26,16 @@ use Illuminate\Support\Facades\DB;
  * If ANY record fails validation, the entire batch rolls back (all-or-nothing).
  *
  * Authorization (info.md):
+ *   - Route: auth:sanctum + role:Admin,Employee (personal dashboard submission).
  *   - Employee: may only submit for users sharing the same team_id.
- *   - Admin: unrestricted team scope.
+ *   - Admin: unrestricted team scope (including own attendance when assigned to a team).
+ *   - Identity / actor always from $request->user() — never from a role-hardcoded ID.
  *
  * HighLevelArchitecture.md workflow executed per record:
  *   1. Map frontend code (AO/OA→A 0.5, NO/ON→N 0.5, W/O/X→NULL bypass validation, standard→1.0).
  *   2. Reject duplicate (user_id, date) rows — one log per employee per day.
  *   3. Validate remaining_days will not drop below zero after cumulative deductions.
- *   4. Increment taken_days on user_yearly_leave_records.
+ *   4. Increment taken_days on user_yearly_leave_records (0.0 when the date is a weekend).
  *   5. Insert attendance_logs row with resolved leave_type_id.
  */
 class AttendanceController extends Controller
@@ -198,6 +202,7 @@ class AttendanceController extends Controller
                 mapped: $mapped,
                 userId: $userId,
                 year: $year,
+                date: $date,
                 pendingDeductions: $pendingDeductions,
                 leaveTypeCodesById: $leaveTypeCodesById,
             );
@@ -217,62 +222,24 @@ class AttendanceController extends Controller
      *
      * Reverses the prior balance deduction, validates the new code, and persists
      * the updated leave_type_id + submitted_code inside a single transaction.
-     *
-     * JSON response (200):
-     * {
-     *   "success": true,
-     *   "message": "Attendance record updated successfully.",
-     *   "data": { "id": 1, "submitted_code": "AO", "leave_type_id": 1 }
-     * }
+     * Sets updated_by for Admin audit trail.
      */
     public function update(UpdateAttendanceRequest $request, AttendanceLog $attendanceLog): JsonResponse
     {
         $newCode = strtoupper(trim($request->validated('code')));
 
+        /** @var User $admin */
+        $admin = $request->user();
+
         try {
-            $updatedLog = DB::transaction(function () use ($attendanceLog, $newCode): AttendanceLog {
+            $updatedLog = DB::transaction(function () use ($attendanceLog, $newCode, $admin): AttendanceLog {
                 /** @var AttendanceLog $log */
                 $log = AttendanceLog::query()
                     ->whereKey($attendanceLog->id)
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                /** @var array<int, string> $leaveTypeCodesById */
-                $leaveTypeCodesById = LeaveType::query()
-                    ->pluck('leave_type_code', 'id')
-                    ->all();
-
-                $oldCode = $this->resolveEffectiveCode($log, $leaveTypeCodesById);
-
-                if ($oldCode === $newCode) {
-                    return $log;
-                }
-
-                $year = (int) $log->date->format('Y');
-
-                $oldMapped = $this->variantMapper->map($oldCode);
-                if ($oldMapped->requiresBalanceCheck) {
-                    $this->releaseBalance($oldMapped, (int) $log->user_id, $year);
-                }
-
-                $newMapped = $this->variantMapper->map($newCode);
-                $pendingDeductions = [];
-
-                if ($newMapped->requiresBalanceCheck) {
-                    $this->validateAndReserveBalance(
-                        mapped: $newMapped,
-                        userId: (int) $log->user_id,
-                        year: $year,
-                        pendingDeductions: $pendingDeductions,
-                        leaveTypeCodesById: $leaveTypeCodesById,
-                    );
-                }
-
-                $log->submitted_code = $newCode;
-                $log->leave_type_id = $newMapped->leaveTypeId;
-                $log->save();
-
-                return $log->fresh(['leaveType']);
+                return $this->applyAdminCodeChange($log, $newCode, (int) $admin->id);
             });
         } catch (AttendanceValidationException $exception) {
             return response()->json([
@@ -285,15 +252,153 @@ class AttendanceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Attendance record updated successfully.',
-            'data' => [
-                'id' => $updatedLog->id,
-                'user_id' => $updatedLog->user_id,
-                'team_id' => $updatedLog->team_id,
-                'date' => $updatedLog->date->toDateString(),
-                'submitted_code' => $updatedLog->submitted_code,
-                'leave_type_id' => $updatedLog->leave_type_id,
-            ],
+            'data' => $this->attendancePayload($updatedLog),
         ], 200);
+    }
+
+    /**
+     * Admin daily-report upsert — create or update attendance for user + date.
+     *
+     * Body: user_id, date, code|status. Always stamps updated_by with the Admin id.
+     */
+    public function adminUpdate(AdminDailyAttendanceUpdateRequest $request): JsonResponse
+    {
+        $userId = (int) $request->validated('user_id');
+        $date = Carbon::parse($request->validated('date'))->toDateString();
+        $newCode = $request->attendanceCode();
+
+        /** @var User $admin */
+        $admin = $request->user();
+
+        try {
+            $updatedLog = DB::transaction(function () use ($userId, $date, $newCode, $admin): AttendanceLog {
+                $targetUser = User::query()->findOrFail($userId);
+
+                if ($targetUser->team_id === null) {
+                    throw AttendanceValidationException::userMustBeAssignedToTeam($targetUser->id);
+                }
+
+                /** @var AttendanceLog|null $existing */
+                $existing = AttendanceLog::query()
+                    ->where('user_id', $userId)
+                    ->whereDate('date', $date)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing !== null) {
+                    return $this->applyAdminCodeChange($existing, $newCode, (int) $admin->id);
+                }
+
+                $mapped = $this->variantMapper->map($newCode);
+                $leaveTypeCodesById = LeaveType::query()
+                    ->pluck('leave_type_code', 'id')
+                    ->all();
+                $pendingDeductions = [];
+                $year = (int) date('Y', strtotime($date));
+
+                if ($mapped->requiresBalanceCheck) {
+                    $this->validateAndReserveBalance(
+                        mapped: $mapped,
+                        userId: $userId,
+                        year: $year,
+                        date: $date,
+                        pendingDeductions: $pendingDeductions,
+                        leaveTypeCodesById: $leaveTypeCodesById,
+                    );
+                }
+
+                $log = AttendanceLog::query()->create([
+                    'user_id' => $targetUser->id,
+                    'team_id' => $targetUser->team_id,
+                    'date' => $date,
+                    'submitted_code' => $newCode,
+                    'leave_type_id' => $mapped->leaveTypeId,
+                    'updated_by' => $admin->id,
+                ]);
+
+                return $log->fresh(['leaveType', 'editor']);
+            });
+        } catch (AttendanceValidationException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+                'errors' => $exception->context,
+            ], $exception->httpStatus);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance record saved successfully.',
+            'data' => $this->attendancePayload($updatedLog),
+        ], 200);
+    }
+
+    /**
+     * Apply a new attendance code to a locked log row (balance reverse + reserve).
+     *
+     * @throws AttendanceValidationException
+     */
+    private function applyAdminCodeChange(
+        AttendanceLog $log,
+        string $newCode,
+        int $adminUserId,
+    ): AttendanceLog {
+        /** @var array<int, string> $leaveTypeCodesById */
+        $leaveTypeCodesById = LeaveType::query()
+            ->pluck('leave_type_code', 'id')
+            ->all();
+
+        $oldCode = $this->resolveEffectiveCode($log, $leaveTypeCodesById);
+
+        if ($oldCode !== $newCode) {
+            $year = (int) $log->date->format('Y');
+            $date = $log->date->toDateString();
+
+            $oldMapped = $this->variantMapper->map($oldCode);
+            if ($oldMapped->requiresBalanceCheck) {
+                $this->releaseBalance($oldMapped, (int) $log->user_id, $year, $date);
+            }
+
+            $newMapped = $this->variantMapper->map($newCode);
+            $pendingDeductions = [];
+
+            if ($newMapped->requiresBalanceCheck) {
+                $this->validateAndReserveBalance(
+                    mapped: $newMapped,
+                    userId: (int) $log->user_id,
+                    year: $year,
+                    date: $date,
+                    pendingDeductions: $pendingDeductions,
+                    leaveTypeCodesById: $leaveTypeCodesById,
+                );
+            }
+
+            $log->submitted_code = $newCode;
+            $log->leave_type_id = $newMapped->leaveTypeId;
+        }
+
+        $log->updated_by = $adminUserId;
+        $log->save();
+
+        return $log->fresh(['leaveType', 'editor']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function attendancePayload(AttendanceLog $log): array
+    {
+        return [
+            'id' => $log->id,
+            'user_id' => $log->user_id,
+            'team_id' => $log->team_id,
+            'date' => $log->date->toDateString(),
+            'submitted_code' => $log->submitted_code,
+            'leave_type_id' => $log->leave_type_id,
+            'updated_by' => $log->updated_by,
+            'updated_at' => $log->updated_at?->toIso8601String(),
+            'updated_by_name' => $log->editor?->name,
+        ];
     }
 
     /**
@@ -315,15 +420,39 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Resolve the ledger charge for an attendance date.
+     *
+     * Weekends (Sat/Sun) always charge 0.0 so the attendance log can still be
+     * stored for calendar visibility without draining leave balances.
+     * Weekday charges preserve half-day (0.5) and full-day (1.0) amounts from the mapper.
+     */
+    private function ledgerDeductionForDate(MappedAttendanceCode $mapped, string $date): float
+    {
+        if (Carbon::parse($date)->isWeekend()) {
+            return 0.0;
+        }
+
+        return $mapped->deductionAmount;
+    }
+
+    /**
      * Reverse a prior balance deduction when an Admin overrides an attendance code.
+     *
+     * Weekend logs were never charged, so reversal is a no-op for Sat/Sun.
      */
     private function releaseBalance(
         MappedAttendanceCode $mapped,
         int $userId,
         int $year,
+        string $date,
     ): void {
+        $deduction = $this->ledgerDeductionForDate($mapped, $date);
+
+        if ($deduction <= 0.0) {
+            return;
+        }
+
         $balanceLeaveTypeId = $mapped->balanceLeaveTypeId;
-        $deduction = $mapped->deductionAmount;
 
         $balanceRecord = UserYearlyLeaveRecord::query()
             ->where('user_id', $userId)
@@ -377,6 +506,9 @@ class AttendanceController extends Controller
     /**
      * Validate remaining_days and increment taken_days on the parent balance row.
      *
+     * Write-path weekend guard: Saturdays and Sundays charge 0.0 against the ledger
+     * so leave codes remain visible on the calendar without consuming balance.
+     *
      * @param  array<string, float>  $pendingDeductions
      * @param  array<int, string>  $leaveTypeCodesById
      *
@@ -386,11 +518,18 @@ class AttendanceController extends Controller
         MappedAttendanceCode $mapped,
         int $userId,
         int $year,
+        string $date,
         array &$pendingDeductions,
         array $leaveTypeCodesById,
     ): void {
+        $deduction = $this->ledgerDeductionForDate($mapped, $date);
+
+        // Weekend (or zero-charge) leave: accept the attendance log, skip ledger math.
+        if ($deduction <= 0.0) {
+            return;
+        }
+
         $balanceLeaveTypeId = $mapped->balanceLeaveTypeId;
-        $deduction = $mapped->deductionAmount;
         $balanceKey = "{$userId}_{$balanceLeaveTypeId}_{$year}";
 
         $balanceRecord = UserYearlyLeaveRecord::query()

@@ -32,18 +32,32 @@ class ReportController extends Controller
      *
      * Roster-first: every active user (optionally scoped by team) appears.
      * Attendance is merged when a log exists; otherwise codes remain null.
+     * Includes Admin audit fields (updated_by / updated_at / editor) when present.
      *
-     * Query: ?date=2026-06-26&team_id=2
+     * Query: ?date=2026-06-26&team_id=2  (date defaults to today)
      */
     public function daily(DailyReportRequest $request): JsonResponse
     {
-        $date = $request->validated('date');
+        $dateInput = $request->validated('date');
         $teamId = $request->validated('team_id');
-        $resolvedDate = Carbon::parse($date)->toDateString();
+        $resolvedDate = $dateInput !== null && $dateInput !== ''
+            ? Carbon::parse($dateInput)->toDateString()
+            : now()->toDateString();
 
         $usersQuery = User::query()
-            ->with('team')
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->with([
+                'team',
+                // Date-scoped attendance for this report day (0–1 row per user).
+                'attendanceLogs' => static function ($query) use ($resolvedDate): void {
+                    $query
+                        ->whereDate('date', $resolvedDate)
+                        ->with([
+                            'leaveType' => fn ($leaveQuery) => $leaveQuery->withTrashed(),
+                            'editor',
+                        ]);
+                },
+            ]);
 
         if ($teamId !== null && $teamId !== '') {
             $usersQuery->where('team_id', $teamId);
@@ -57,22 +71,9 @@ class ReportController extends Controller
             ])
             ->values();
 
-        $logsQuery = AttendanceLog::query()
-            ->with([
-                'leaveType' => fn ($query) => $query->withTrashed(),
-            ])
-            ->whereDate('date', $resolvedDate);
-
-        if ($teamId !== null && $teamId !== '') {
-            $logsQuery->where('team_id', $teamId);
-        }
-
-        /** @var Collection<int, AttendanceLog> $logsByUserId */
-        $logsByUserId = $logsQuery->get()->keyBy('user_id');
-
-        $records = $users->map(function (User $user) use ($logsByUserId, $resolvedDate): array {
+        $records = $users->map(function (User $user) use ($resolvedDate): array {
             /** @var AttendanceLog|null $log */
-            $log = $logsByUserId->get($user->id);
+            $log = $user->attendanceLogs->first();
 
             if ($log === null) {
                 return [
@@ -85,6 +86,9 @@ class ReportController extends Controller
                     'submitted_code' => null,
                     'leave_type_code' => null,
                     'leave_type_name' => null,
+                    'updated_by' => null,
+                    'updated_at' => null,
+                    'updated_by_name' => null,
                 ];
             }
 
@@ -100,6 +104,9 @@ class ReportController extends Controller
                     ?? 'O',
                 'leave_type_code' => $log->leaveType?->leave_type_code,
                 'leave_type_name' => $log->leaveType?->name,
+                'updated_by' => $log->updated_by,
+                'updated_at' => $log->updated_at?->toIso8601String(),
+                'updated_by_name' => $log->editor?->name,
             ];
         })->values();
 
@@ -114,10 +121,14 @@ class ReportController extends Controller
     }
 
     /**
-     * Monthly report — user × day-of-month attendance matrix.
+     * Monthly report — user × day-of-month attendance matrix for a calendar grid.
      *
      * Roster-first: every active user (optionally filtered by team) appears as a row.
-     * Month-scoped attendanceLogs are eager-loaded; empty logs yield zero totals / blank days.
+     * Month-scoped attendanceLogs are eager-loaded into `daily_records` (day → code);
+     * empty logs yield zero totals / blank days.
+     *
+     * Aggregate totals (office, WFH, leave counts) exclude Saturdays and Sundays;
+     * weekend codes still appear in `daily_records` for the calendar grid.
      *
      * Query: ?year=2026&month=6&team_id=2
      */
@@ -128,17 +139,19 @@ class ReportController extends Controller
         $teamId = $request->validated('team_id');
 
         $periodStart = Carbon::create($year, $month, 1)->startOfDay();
-        $periodEnd = $periodStart->copy()->endOfMonth();
         $daysInMonth = $periodStart->daysInMonth;
 
         $usersQuery = User::query()
+            ->where('is_active', true)
             ->with([
                 'team',
-                'attendanceLogs' => fn ($query) => $query
-                    ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-                    ->with(['leaveType' => fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed()]),
-            ])
-            ->where('is_active', true);
+                'attendanceLogs' => static function ($query) use ($year, $month): void {
+                    $query
+                        ->whereYear('date', $year)
+                        ->whereMonth('date', $month)
+                        ->with(['leaveType' => static fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed()]);
+                },
+            ]);
 
         if ($teamId !== null && $teamId !== '') {
             $usersQuery->where('team_id', $teamId);
@@ -153,8 +166,8 @@ class ReportController extends Controller
             ->values();
 
         $rows = $users->map(function (User $user) use ($daysInMonth): array {
-            /** @var array<int, string|null> $dayMatrix */
-            $dayMatrix = array_fill(1, $daysInMonth, null);
+            /** @var array<int, string|null> $dailyRecords Day-of-month → attendance/leave code. */
+            $dailyRecords = array_fill(1, $daysInMonth, null);
 
             $annualTotal = 0;
             $sickTotal = 0;
@@ -167,7 +180,13 @@ class ReportController extends Controller
                 $attendanceCode = $this->resolveAttendanceCode($log);
                 $leaveCode = $log->leaveType?->leave_type_code;
 
-                $dayMatrix[$dayOfMonth] = $leaveCode ?? ($attendanceCode !== '' ? $attendanceCode : null);
+                // Always populate the calendar cell (weekends included for display).
+                $dailyRecords[$dayOfMonth] = $leaveCode ?? ($attendanceCode !== '' ? $attendanceCode : null);
+
+                // Aggregates count working days only — Sat/Sun are excluded.
+                if ($log->date->isWeekend()) {
+                    continue;
+                }
 
                 if ($leaveCode === 'A') {
                     $annualTotal++;
@@ -188,7 +207,7 @@ class ReportController extends Controller
                 'user_id' => $user->id,
                 'user_name' => $user->name,
                 'team_name' => $user->team?->team_name,
-                'days' => $dayMatrix,
+                'daily_records' => $dailyRecords,
                 'totals' => [
                     'annual' => $annualTotal,
                     'sick' => $sickTotal,
@@ -310,6 +329,9 @@ class ReportController extends Controller
                 }
 
                 $assigned = (float) $record->assigned_days;
+                // Ledger totals (taken_days) come from attendance submit/admin override.
+                // Write-path weekend guard charges 0.0 on Sat/Sun, so ledger absences
+                // already exclude weekends when leave was logged through attendance APIs.
                 $taken = (float) $record->taken_days;
                 $remaining = round($assigned - $taken, 2);
 
@@ -347,6 +369,8 @@ class ReportController extends Controller
     /**
      * Count Work-in-Office (O) and Work-from-Home (W) attendance days per user for a year.
      *
+     * Saturdays and Sundays are excluded so totals reflect working days only.
+     *
      * @param  int|null  $teamId  When set, only count logs for users currently on this team.
      * @return array<int, array{total_work_in_office: int, total_wfh: int}>
      */
@@ -364,12 +388,16 @@ class ReportController extends Controller
         }
 
         /** @var Collection<int, AttendanceLog> $logs */
-        $logs = $logsQuery->get(['id', 'user_id', 'submitted_code', 'leave_type_id']);
+        $logs = $logsQuery->get(['id', 'user_id', 'date', 'submitted_code', 'leave_type_id']);
 
         /** @var array<int, array{total_work_in_office: int, total_wfh: int}> $totalsByUser */
         $totalsByUser = [];
 
         foreach ($logs as $log) {
+            if ($log->date->isWeekend()) {
+                continue;
+            }
+
             $userId = (int) $log->user_id;
 
             if (! array_key_exists($userId, $totalsByUser)) {

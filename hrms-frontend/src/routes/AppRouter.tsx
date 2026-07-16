@@ -2,12 +2,11 @@ import { Navigate, useRoutes, type RouteObject } from 'react-router-dom';
 import { AdminLayout } from '../components/layout/AdminLayout';
 import { EmployeeLayout } from '../components/layout/EmployeeLayout';
 import { ProtectedRoute } from '../components/layout/ProtectedRoute';
-import DailyReport from '../pages/admin/DailyReport';
+import AdminDashboard from '../pages/admin/Dashboard';
 import LeaveTypes from '../pages/admin/LeaveTypes';
-import MonthlyReport from '../pages/admin/MonthlyReport';
+import Reports from '../pages/admin/Reports';
 import Teams from '../pages/admin/Teams';
 import Users from '../pages/admin/Users';
-import YearlyReport from '../pages/admin/YearlyReport';
 import Dashboard from '../pages/employee/Dashboard';
 import Profile from '../pages/employee/Profile';
 import Login from '../pages/auth/Login';
@@ -31,7 +30,11 @@ const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        element: <Navigate to="/admin/users" replace />,
+        element: <Navigate to="/admin/dashboard" replace />,
+      },
+      {
+        path: 'dashboard',
+        element: <AdminDashboard />,
       },
       {
         path: 'users',
@@ -47,15 +50,15 @@ const routes: RouteObject[] = [
       },
       {
         path: 'reports',
-        element: <YearlyReport />,
+        element: <Reports />,
       },
       {
         path: 'reports/daily',
-        element: <DailyReport />,
+        element: <Navigate to="/admin/reports?tab=daily" replace />,
       },
       {
         path: 'reports/monthly',
-        element: <MonthlyReport />,
+        element: <Navigate to="/admin/reports?tab=monthly" replace />,
       },
     ],
   },

@@ -19,6 +19,8 @@ export const queryKeys = {
       ['admin', 'teams', 'list', isArchived ? 'archived' : 'current', search] as const,
   },
   profile: ['profile'] as const,
+  /** Dashboard attendance view scoped by calendar date (`GET /profile?date=`). */
+  profileByDate: (date: string) => ['profile', 'by-date', date] as const,
   reports: {
     all: ['reports'] as const,
     yearly: (year: number, teamId: string) =>

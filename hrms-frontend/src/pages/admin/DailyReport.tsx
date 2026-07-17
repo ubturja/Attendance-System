@@ -106,8 +106,11 @@ async function fetchTeams(): Promise<TeamOption[]> {
   return response.data.data;
 }
 
-async function fetchActiveLeaveTypes(): Promise<LeaveTypeOptionSource[]> {
-  const response = await api.get<ApiSuccessResponse<LeaveTypeOptionSource[]>>('/leave-types');
+async function fetchAdminReportLeaveTypes(): Promise<LeaveTypeOptionSource[]> {
+  const response = await api.get<ApiSuccessResponse<LeaveTypeOptionSource[]>>(
+    '/admin/leave-types',
+    { params: { status: 'all' } },
+  );
   return response.data.data;
 }
 
@@ -233,8 +236,8 @@ export default function DailyReport() {
     : 'No members found.';
 
   const leaveTypesQuery = useQuery({
-    queryKey: queryKeys.leaveTypes.active,
-    queryFn: fetchActiveLeaveTypes,
+    queryKey: [...queryKeys.leaveTypes.admin, 'report-options', 'all'],
+    queryFn: fetchAdminReportLeaveTypes,
   });
 
   const attendanceOptions = useMemo(

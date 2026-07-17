@@ -182,7 +182,7 @@ export default function MonthlyReport() {
   const reportMonth = Number.isNaN(parsedMonth) ? defaults.month : parsedMonth;
 
   const calendarDays = getDaysInMonth(reportYear, reportMonth);
-  const columnCount = 1 + calendarDays.length + SUMMARY_HEADERS.length;
+  const columnCount = 2 + calendarDays.length + SUMMARY_HEADERS.length;
 
   const {
     data: report,
@@ -319,6 +319,9 @@ export default function MonthlyReport() {
               >
                 Name
               </TableHead>
+              <TableHead className="min-w-[8rem] whitespace-nowrap px-3 text-left normal-case tracking-normal">
+                Team
+              </TableHead>
               {calendarDays.map((day) => (
                 <TableHead
                   key={`day-name-${day.date}`}
@@ -347,6 +350,10 @@ export default function MonthlyReport() {
               <TableHead
                 aria-hidden="true"
                 className={cn(stickyNameHead, 'h-9 min-w-[10rem] border-t border-slate-200 p-0')}
+              />
+              <TableHead
+                aria-hidden="true"
+                className="h-9 min-w-[8rem] border-t border-slate-200 p-0"
               />
               {calendarDays.map((day) => (
                 <TableHead
@@ -398,6 +405,9 @@ export default function MonthlyReport() {
                       )}
                     >
                       {row.user_name}
+                    </TableCell>
+                    <TableCell className="min-w-[8rem] whitespace-nowrap px-3 text-slate-700">
+                      {row.team_name ?? '—'}
                     </TableCell>
 
                     {/* Day cells — same calendarDays array as the header */}

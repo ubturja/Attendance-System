@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 /**
  * Leave type API for dynamic attendance dropdowns and Admin catalog management.
  *
- * Soft-deleted rows are hidden from adminIndex unless ?status=archived.
+ * Soft-deleted rows are hidden from adminIndex unless ?status=archived|all.
  * Historical reports resolve names via withTrashed() on leave type relations.
  */
 class LeaveTypeController extends Controller
@@ -49,24 +49,33 @@ class LeaveTypeController extends Controller
     /**
      * Return leave types for the Admin catalog screen.
      *
-     * Query: ?status=archived → only soft-deleted rows (onlyTrashed).
-     * Default → non-trashed rows (active and inactive is_active values).
+     * Query:
+     *   ?status=archived → only soft-deleted rows (Admin catalog archive tab).
+     *   ?status=all      → active, inactive, and soft-deleted rows (Admin report dropdowns).
+     *   default          → non-trashed rows (active and inactive catalog rows).
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = LeaveType::query()->orderBy('leave_type_code');
+        $status = $request->query('status');
+        $query = LeaveType::query();
 
-        if ($request->query('status') === 'archived') {
+        if ($status === 'archived') {
             $query->onlyTrashed();
+        } elseif ($status === 'all') {
+            $query->withTrashed();
         }
 
-        $leaveTypes = $query->get();
+        $leaveTypes = $query
+            ->orderBy('leave_type_code')
+            ->get();
 
         return response()->json([
             'success' => true,
-            'message' => $request->query('status') === 'archived'
-                ? 'Archived leave types retrieved successfully.'
-                : 'Leave types retrieved successfully.',
+            'message' => match ($status) {
+                'archived' => 'Archived leave types retrieved successfully.',
+                'all' => 'All leave types retrieved successfully.',
+                default => 'Leave types retrieved successfully.',
+            },
             'data' => $leaveTypes,
         ], 200);
     }

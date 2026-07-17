@@ -17,6 +17,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
         ]);
+
+        // Zombie-token gate: soft-deleted / inactive users cannot keep using Sanctum tokens.
+        // Appended to the api group and ordered AFTER Authenticate so Bearer auth resolves first.
+        $middleware->appendToGroup('api', [
+            \App\Http\Middleware\EnsureUserIsActive::class,
+        ]);
+        $middleware->appendToPriorityList(
+            \Illuminate\Auth\Middleware\Authenticate::class,
+            \App\Http\Middleware\EnsureUserIsActive::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

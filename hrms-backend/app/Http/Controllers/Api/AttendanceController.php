@@ -61,6 +61,12 @@ class AttendanceController extends Controller
      *   "errors": { "user_id": 9 }
      * }
      *
+     * JSON response (403) — non-today submission (dashboard is today-only):
+     * {
+     *   "success": false,
+     *   "message": "You can only submit or update attendance for today. Contact your Admin for past changes."
+     * }
+     *
      * JSON response (422) — balance, duplicate, or mapping failure (entire batch rolled back):
      * {
      *   "success": false,
@@ -72,6 +78,18 @@ class AttendanceController extends Controller
     {
         /** @var list<array{user_id: int, date: string, code: string}> $records */
         $records = $request->validated('records');
+
+        // Dashboard submissions are today-only. Past/future corrections go through Admin.
+        foreach ($records as $record) {
+            $submissionDate = $record['date'] ?? now()->toDateString();
+
+            if (! Carbon::parse($submissionDate)->isToday()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You can only submit or update attendance for today. Contact your Admin for past changes.',
+                ], 403);
+            }
+        }
 
         /** @var User $authenticatedUser */
         $authenticatedUser = $request->user();

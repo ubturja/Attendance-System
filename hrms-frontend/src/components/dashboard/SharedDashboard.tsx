@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { CalendarDays, Loader2, Wallet } from 'lucide-react';
 import { Alert } from '../ui/Alert';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import {
   Table,
   TableBody,
@@ -50,11 +52,22 @@ interface ProfileYearlyLeaveRecord {
   leave_type: ProfileLeaveType | null;
 }
 
+interface ProfileAttendanceLog {
+  id: number;
+  user_id: number;
+  team_id: number;
+  date: string;
+  submitted_code: string | null;
+  leave_type_id: number | null;
+  leave_type?: ProfileLeaveType | null;
+}
+
 interface ProfileTeamMember {
   id: number;
   name: string;
   team_id: number | null;
   job_title: 'Admin' | 'Employee';
+  attendance_logs?: ProfileAttendanceLog[];
 }
 
 interface ProfileTeam {
@@ -70,6 +83,7 @@ interface ProfileRecord {
   job_title: 'Admin' | 'Employee';
   team_id: number | null;
   team: ProfileTeam | null;
+  attendance_date?: string;
   leave_balances?: ProfileYearlyLeaveRecord[];
   yearly_leave_records?: ProfileYearlyLeaveRecord[];
   total_absences?: number;
@@ -113,13 +127,35 @@ function getLeaveBalances(profile: ProfileRecord | undefined): ProfileYearlyLeav
   return profile.leave_balances ?? profile.yearly_leave_records ?? [];
 }
 
+function resolveMemberAttendanceCode(member: ProfileTeamMember): string {
+  const log = member.attendance_logs?.[0];
+
+  if (log === undefined) {
+    return DEFAULT_ATTENDANCE_CODE;
+  }
+
+  const submitted = log.submitted_code?.trim();
+  if (submitted !== undefined && submitted !== '') {
+    return submitted.toUpperCase();
+  }
+
+  const leaveCode = log.leave_type?.leave_type_code?.trim();
+  if (leaveCode !== undefined && leaveCode !== '') {
+    return leaveCode.toUpperCase();
+  }
+
+  return DEFAULT_ATTENDANCE_CODE;
+}
+
 async function fetchActiveLeaveTypes(): Promise<LeaveTypeRecord[]> {
   const response = await api.get<ApiSuccessResponse<LeaveTypeRecord[]>>('/leave-types');
   return response.data.data;
 }
 
-async function fetchProfile(): Promise<ProfileRecord> {
-  const response = await api.get<ApiSuccessResponse<ProfileRecord>>('/profile');
+async function fetchProfile(date: string): Promise<ProfileRecord> {
+  const response = await api.get<ApiSuccessResponse<ProfileRecord>>('/profile', {
+    params: { date },
+  });
   return response.data.data;
 }
 
@@ -142,8 +178,10 @@ function getTodayDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
-function createDefaultSelections(memberIds: number[]): Record<number, string> {
-  return Object.fromEntries(memberIds.map((memberId) => [memberId, DEFAULT_ATTENDANCE_CODE]));
+function createSelectionsFromMembers(members: ProfileTeamMember[]): Record<number, string> {
+  return Object.fromEntries(
+    members.map((member) => [member.id, resolveMemberAttendanceCode(member)]),
+  );
 }
 
 function memberInitials(name: string): string {
@@ -186,6 +224,12 @@ function TeamAttendanceTableSkeleton() {
 
 export function SharedDashboard() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const todayDate = getTodayDateString();
+  const selectedDate = searchParams.get('date') || todayDate;
+  const isViewingToday = selectedDate === todayDate;
+  const isNotToday = !isViewingToday;
+
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [submitSuccess, setSubmitSuccess] = useState<string | undefined>();
@@ -197,8 +241,8 @@ export function SharedDashboard() {
   });
 
   const profileQuery = useQuery({
-    queryKey: queryKeys.profile,
-    queryFn: fetchProfile,
+    queryKey: queryKeys.profileByDate(selectedDate),
+    queryFn: () => fetchProfile(selectedDate),
   });
 
   const teamMembers = profileQuery.data?.team?.users ?? [];
@@ -224,26 +268,15 @@ export function SharedDashboard() {
       return;
     }
 
-    setSelections((previousSelections) => {
-      const nextSelections = { ...previousSelections };
-
-      for (const member of teamMembers) {
-        if (nextSelections[member.id] === undefined) {
-          nextSelections[member.id] = DEFAULT_ATTENDANCE_CODE;
-        }
-      }
-
-      return nextSelections;
-    });
-  }, [teamMembers]);
+    setSelections(createSelectionsFromMembers(teamMembers));
+  }, [teamMembers, selectedDate]);
 
   const submitAttendanceMutation = useMutation({
     mutationFn: submitAttendance,
     onSuccess: () => {
       setSubmitSuccess('Attendance submitted successfully.');
       setSubmitError(undefined);
-      setSelections(createDefaultSelections(teamMembers.map((member) => member.id)));
-      void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profileByDate(selectedDate) });
       invalidateReportQueries(queryClient);
     },
     onError: (error) => {
@@ -256,6 +289,21 @@ export function SharedDashboard() {
   const isPageError = leaveTypesQuery.isError || profileQuery.isError;
   const isSubmitting = submitAttendanceMutation.isPending;
   const areLeaveTypesLoading = leaveTypesQuery.isLoading;
+  const canSubmitAttendance = isViewingToday && !isPageLoading && !isPageError && teamMembers.length > 0;
+
+  function setSelectedDate(date: string): void {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (date === '' || date === todayDate) {
+        next.delete('date');
+      } else {
+        next.set('date', date);
+      }
+      return next;
+    });
+    setSubmitError(undefined);
+    setSubmitSuccess(undefined);
+  }
 
   function handleCodeChange(memberId: number, value: string) {
     setSelections((previousSelections) => ({ ...previousSelections, [memberId]: value }));
@@ -268,10 +316,16 @@ export function SharedDashboard() {
     setSubmitError(undefined);
     setSubmitSuccess(undefined);
 
-    const attendanceDate = getTodayDateString();
+    if (!isViewingToday) {
+      setSubmitError(
+        'You can only submit or update attendance for today. Contact your Admin for past changes.',
+      );
+      return;
+    }
+
     const records: AttendanceRecordPayload[] = teamMembers.map((member) => ({
       user_id: member.id,
-      date: attendanceDate,
+      date: todayDate,
       code: selections[member.id] ?? DEFAULT_ATTENDANCE_CODE,
     }));
 
@@ -349,11 +403,30 @@ export function SharedDashboard() {
         onSubmit={handleSubmit}
         className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       >
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-900">Team Attendance Submission</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Select an attendance code for yourself and each {teamName} member.
-          </p>
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-slate-900">Team Attendance Submission</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {isViewingToday
+                ? `Select an attendance code for yourself and each ${teamName} member.`
+                : `Viewing attendance for ${selectedDate}. Past days are read-only — contact your Admin for changes.`}
+            </p>
+          </div>
+          <div className="w-full shrink-0 sm:w-44">
+            <Input
+              type="date"
+              label="Date"
+              value={selectedDate}
+              max={todayDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              aria-label="Attendance date"
+            />
+            {isNotToday ? (
+              <p className="mt-1.5 text-sm text-red-500">
+                Contact your Admin to update past attendances.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         {submitSuccess !== undefined ? (
@@ -409,7 +482,7 @@ export function SharedDashboard() {
                         )}
                         value={selections[member.id] ?? DEFAULT_ATTENDANCE_CODE}
                         onChange={(event) => handleCodeChange(member.id, event.target.value)}
-                        disabled={isSubmitting || areLeaveTypesLoading}
+                        disabled={isNotToday || isSubmitting || areLeaveTypesLoading}
                         aria-label={`Attendance code for ${member.name}`}
                       >
                         {attendanceOptions.map((option) => (
@@ -431,10 +504,14 @@ export function SharedDashboard() {
             type="submit"
             variant="primary"
             size="lg"
-            className="h-12 w-full text-base"
-            disabled={isPageLoading || isPageError || teamMembers.length === 0 || isSubmitting}
+            className="h-12 w-full text-base disabled:bg-slate-400 disabled:cursor-not-allowed"
+            disabled={isNotToday || !canSubmitAttendance || isSubmitting}
           >
-            {isSubmitting ? 'Submitting...' : 'Submit Attendance'}
+            {isSubmitting
+              ? 'Submitting...'
+              : isNotToday
+                ? 'Past Attendance is Read-Only'
+                : 'Submit Attendance'}
           </Button>
         </div>
       </form>

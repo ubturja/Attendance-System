@@ -9,6 +9,7 @@ use App\Models\LeaveType;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -72,6 +73,32 @@ class AttendanceSecurityTest extends TestCase
             'errors' => [
                 'user_id' => $outsider->id,
             ],
+        ]);
+
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
+
+    public function test_attendance_submission_for_non_today_date_is_forbidden(): void
+    {
+        $team = Team::factory()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => now()->subDay()->toDateString(),
+                    'code' => 'O',
+                ],
+            ],
+        ]);
+
+        $response->assertForbidden();
+        $response->assertJson([
+            'success' => false,
+            'message' => 'You can only submit or update attendance for today. Contact your Admin for past changes.',
         ]);
 
         $this->assertDatabaseCount('attendance_logs', 0);
@@ -217,6 +244,9 @@ class AttendanceSecurityTest extends TestCase
 
     public function test_weekend_leave_is_logged_without_charging_leave_balance(): void
     {
+        // Freeze "today" on Saturday so the dashboard today-only guard still allows submit.
+        Carbon::setTestNow(Carbon::parse('2026-07-18'));
+
         $team = Team::factory()->create();
         $employee = User::factory()->employee()->forTeam($team)->create();
         $annualLeave = LeaveType::factory()->annual()->create();
@@ -257,10 +287,15 @@ class AttendanceSecurityTest extends TestCase
         $balance->refresh();
         $this->assertSame(2.0, (float) $balance->taken_days);
         $this->assertSame(8.0, (float) $balance->remaining_days);
+
+        Carbon::setTestNow();
     }
 
     public function test_weekday_leave_still_charges_leave_balance(): void
     {
+        // Freeze "today" on Monday so the dashboard today-only guard still allows submit.
+        Carbon::setTestNow(Carbon::parse('2026-07-20'));
+
         $team = Team::factory()->create();
         $employee = User::factory()->employee()->forTeam($team)->create();
         $annualLeave = LeaveType::factory()->annual()->create();
@@ -293,6 +328,8 @@ class AttendanceSecurityTest extends TestCase
         $balance->refresh();
         $this->assertSame(3.0, (float) $balance->taken_days);
         $this->assertSame(7.0, (float) $balance->remaining_days);
+
+        Carbon::setTestNow();
     }
 
     public function test_admin_weekend_upsert_does_not_charge_leave_balance(): void

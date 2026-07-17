@@ -12,6 +12,7 @@ import {
   TableRow,
 } from './Table';
 import api from '../../lib/api';
+import { queryKeys } from '../../lib/queryKeys';
 
 interface ApiSuccessResponse<T> {
   success: true;
@@ -26,7 +27,8 @@ interface LeaveTypeSummary {
 }
 
 interface YearlyLeaveBalanceRecord {
-  id: number;
+  id?: number;
+  leave_type_id: number;
   year: number;
   assigned_days: number;
   taken_days: number;
@@ -68,7 +70,7 @@ export function LeaveBalanceSlideOver({
     isError,
     isFetching,
   } = useQuery({
-    queryKey: ['admin', 'user', userId, 'balances'] as const,
+    queryKey: queryKeys.users.balances(userId as number),
     queryFn: () => fetchUserLeaveBalances(userId as number),
     enabled: isOpen && userId !== null,
   });
@@ -100,13 +102,7 @@ export function LeaveBalanceSlideOver({
           </Alert>
         ) : null}
 
-        {!isLoading && !isError && user !== undefined && records.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-500">
-            No leave balance records found for this user.
-          </p>
-        ) : null}
-
-        {!isLoading && !isError && records.length > 0 ? (
+        {!isLoading && !isError && user !== undefined ? (
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <Table>
               <TableHeader>
@@ -124,9 +120,15 @@ export function LeaveBalanceSlideOver({
                     record.leave_type?.leave_type_code ??
                     '—';
                   const leaveCode = record.leave_type?.leave_type_code;
+                  const rowKey =
+                    record.id ??
+                    record.leave_type_id ??
+                    record.leave_type?.id ??
+                    leaveCode ??
+                    leaveName;
 
                   return (
-                    <TableRow key={record.id}>
+                    <TableRow key={rowKey}>
                       <TableCell>
                         <div className="min-w-0">
                           <p className="font-medium text-slate-900">{leaveName}</p>

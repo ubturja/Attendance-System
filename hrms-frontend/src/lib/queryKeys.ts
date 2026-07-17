@@ -12,6 +12,7 @@ export const queryKeys = {
     admin: ['admin', 'users'] as const,
     list: (isArchived: boolean, search: string) =>
       ['admin', 'users', 'list', isArchived ? 'archived' : 'current', search] as const,
+    balances: (userId: number) => ['admin', 'user', userId, 'balances'] as const,
   },
   teams: {
     admin: ['admin', 'teams'] as const,

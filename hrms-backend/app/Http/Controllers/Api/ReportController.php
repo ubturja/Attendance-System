@@ -347,7 +347,7 @@ class ReportController extends Controller
      *
      * @param  Collection<int, User>  $users
      * @param  Collection<int, LeaveType>  $leaveTypes
-     * @param  array<int, array{total_work_in_office: int, total_wfh: int}>  $workDayTotalsByUser
+     * @param  array<int, array{total_work_in_office: float, total_wfh: float}>  $workDayTotalsByUser
      * @return list<array<string, mixed>>
      */
     private function transformYearlyPivot(
@@ -400,8 +400,8 @@ class ReportController extends Controller
             $flatRow['total_absences'] = $totalAbsences;
 
             $workDayTotals = $workDayTotalsByUser[$user->id] ?? [
-                'total_work_in_office' => 0,
-                'total_wfh' => 0,
+                'total_work_in_office' => 0.0,
+                'total_wfh' => 0.0,
             ];
             $flatRow['total_work_in_office'] = $workDayTotals['total_work_in_office'];
             $flatRow['total_wfh'] = $workDayTotals['total_wfh'];
@@ -424,9 +424,12 @@ class ReportController extends Controller
      * Count Work-in-Office (O) and Work-from-Home (W) attendance days per user for a year.
      *
      * Saturdays and Sundays are excluded so totals reflect working days only.
+     * Uses the same fractional half-day math as the monthly report (via
+     * monthlyDayFractions), so half-day variants like AO/OA/SO/OS add 0.5 to
+     * the office total instead of being skipped.
      *
      * @param  int|null  $teamId  When set, only count logs snapshotted to this team.
-     * @return array<int, array{total_work_in_office: int, total_wfh: int}>
+     * @return array<int, array{total_work_in_office: float, total_wfh: float}>
      */
     private function countWorkDayTotalsByUserForYear(int $year, ?int $teamId = null): array
     {
@@ -441,7 +444,7 @@ class ReportController extends Controller
         /** @var Collection<int, AttendanceLog> $logs */
         $logs = $logsQuery->get(['id', 'user_id', 'date', 'submitted_code', 'leave_type_id']);
 
-        /** @var array<int, array{total_work_in_office: int, total_wfh: int}> $totalsByUser */
+        /** @var array<int, array{total_work_in_office: float, total_wfh: float}> $totalsByUser */
         $totalsByUser = [];
 
         foreach ($logs as $log) {
@@ -453,18 +456,21 @@ class ReportController extends Controller
 
             if (! array_key_exists($userId, $totalsByUser)) {
                 $totalsByUser[$userId] = [
-                    'total_work_in_office' => 0,
-                    'total_wfh' => 0,
+                    'total_work_in_office' => 0.0,
+                    'total_wfh' => 0.0,
                 ];
             }
 
-            $code = $this->resolveAttendanceCode($log);
+            $fractions = $this->monthlyDayFractions($this->resolveAttendanceCode($log));
 
-            if ($code === 'O') {
-                $totalsByUser[$userId]['total_work_in_office']++;
-            } elseif ($code === 'W') {
-                $totalsByUser[$userId]['total_wfh']++;
-            }
+            $totalsByUser[$userId]['total_work_in_office'] = round(
+                $totalsByUser[$userId]['total_work_in_office'] + $fractions['office'],
+                2,
+            );
+            $totalsByUser[$userId]['total_wfh'] = round(
+                $totalsByUser[$userId]['total_wfh'] + $fractions['wfh'],
+                2,
+            );
         }
 
         return $totalsByUser;

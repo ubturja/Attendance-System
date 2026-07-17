@@ -119,27 +119,34 @@ class LeaveAllocationController extends Controller
     }
 
     /**
-     * Upsert assigned_days and/or taken_days on a user's balance row for a leave type/year.
+     * Bulk upsert assigned_days for a user's leave balance rows in a calendar year.
      *
      * Route model binding resolves {user} → User. Uses updateOrCreate on the composite key
      * (user_id, leave_type_id, year) so mid-year leave type additions succeed without a
      * pre-existing row — common when Admin adds a new leave category after user provisioning.
      *
-     * UpdateLeaveAllocationRequest validates leave_type_id, year, and balance fields.
-     * Business guard: taken_days must not exceed assigned_days after merge.
+     * UpdateLeaveAllocationRequest validates year and an allocations[] of leave_type_id +
+     * assigned_days. Existing taken_days are preserved; remaining_days is computed via the
+     * model accessor (assigned_days − taken_days).
+     *
+     * Business guard: taken_days must not exceed the new assigned_days for any row.
      *
      * JSON response (200):
      * {
      *   "success": true,
-     *   "message": "Leave allocation updated successfully.",
-     *   "data": {
-     *     "id": 1,
-     *     "user_id": 5,
-     *     "assigned_days": 14.5,
-     *     "taken_days": 3.5,
-     *     "remaining_days": 11.0,
-     *     "..."
-     *   }
+     *   "message": "Leave allocations updated successfully.",
+     *   "data": [
+     *     {
+     *       "id": 1,
+     *       "user_id": 5,
+     *       "leave_type_id": 1,
+     *       "year": 2026,
+     *       "assigned_days": 14.5,
+     *       "taken_days": 3.5,
+     *       "remaining_days": 11.0,
+     *       "..."
+     *     }
+     *   ]
      * }
      *
      * Business rule violation (422):
@@ -151,53 +158,60 @@ class LeaveAllocationController extends Controller
     public function update(UpdateLeaveAllocationRequest $request, User $user): JsonResponse
     {
         $validated = $request->validated();
+        $year = (int) $validated['year'];
+        /** @var list<array{leave_type_id: int, assigned_days: numeric-string|float|int}> $allocations */
+        $allocations = $validated['allocations'];
 
-        // Resolve existing row (if any) to support partial PATCH merges before upsert.
-        $existing = UserYearlyLeaveRecord::query()
-            ->where('user_id', $user->id)
-            ->where('leave_type_id', $validated['leave_type_id'])
-            ->where('year', $validated['year'])
-            ->first();
+        // Pre-flight: reject any quota reduction that would leave taken_days above assigned_days.
+        foreach ($allocations as $allocation) {
+            $leaveTypeId = (int) $allocation['leave_type_id'];
+            $assignedDays = (float) $allocation['assigned_days'];
 
-        // Merge request values with existing row; default missing fields to 0 on create.
-        $assignedDays = array_key_exists('assigned_days', $validated)
-            ? (float) $validated['assigned_days']
-            : (float) ($existing?->assigned_days ?? 0);
+            $existing = UserYearlyLeaveRecord::query()
+                ->where('user_id', $user->id)
+                ->where('leave_type_id', $leaveTypeId)
+                ->where('year', $year)
+                ->first();
 
-        $takenDays = array_key_exists('taken_days', $validated)
-            ? (float) $validated['taken_days']
-            : (float) ($existing?->taken_days ?? 0);
+            $takenDays = (float) ($existing?->taken_days ?? 0);
 
-        // Integrity check: consumption cannot surpass allocation.
-        // remaining_days formula: assignedDays − takenDays must be ≥ 0.
-        if ($takenDays > $assignedDays) {
-            return response()->json([
-                'success' => false,
-                'message' => 'taken_days cannot exceed assigned_days.',
-            ], 422);
+            if ($takenDays > $assignedDays) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'taken_days cannot exceed assigned_days.',
+                ], 422);
+            }
         }
 
-        // Atomic upsert — creates row for new leave types or updates an existing allocation.
-        $leaveAllocation = DB::transaction(function () use ($user, $validated, $assignedDays, $takenDays): UserYearlyLeaveRecord {
-            return UserYearlyLeaveRecord::query()->updateOrCreate(
-                [
-                    'user_id' => $user->id,
-                    'leave_type_id' => $validated['leave_type_id'],
-                    'year' => $validated['year'],
-                ],
-                [
-                    'assigned_days' => $assignedDays,
-                    'taken_days' => $takenDays,
-                ]
-            );
-        });
+        // Atomic bulk upsert — only assigned_days is written; taken_days stays untouched.
+        $records = DB::transaction(function () use ($user, $year, $allocations): array {
+            $updated = [];
 
-        $leaveAllocation->load('leaveType');
+            foreach ($allocations as $allocation) {
+                $record = UserYearlyLeaveRecord::query()->updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'leave_type_id' => (int) $allocation['leave_type_id'],
+                        'year' => $year,
+                    ],
+                    [
+                        'assigned_days' => (float) $allocation['assigned_days'],
+                    ]
+                );
+
+                // remaining_days is computed by the model accessor from assigned_days − taken_days.
+                $record->load('leaveType');
+                $updated[] = $record;
+            }
+
+            return $updated;
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Leave allocation updated successfully.',
-            'data' => $leaveAllocation,
+            'message' => 'Leave allocations updated successfully.',
+            'data' => $records,
         ], 200);
     }
 }
+

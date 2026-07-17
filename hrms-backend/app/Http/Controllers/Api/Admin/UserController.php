@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -129,30 +130,68 @@ class UserController extends Controller
     }
 
     /**
-     * Retrieve a single user with team and complete yearly leave balances.
+     * Retrieve a single user with team and complete current-year leave balances.
      *
-     * Eager-loads yearlyLeaveRecords.leaveType so the Admin popup receives
-     * assigned_days, taken_days, and the appended remaining_days
-     * (assigned − taken) for every leave type on this user's balance sheet.
+     * Returns every active leave type initialized to 0.0, merged with the user's
+     * actual user_yearly_leave_records rows for the current calendar year so the
+     * Admin slide-over always renders a full balance sheet.
      */
     public function show(User $user): JsonResponse
     {
         // Route-model binding resolves User or returns 404 before this method executes.
-        $user->load([
-            'team',
-            'yearlyLeaveRecords' => static function ($query): void {
-                $query
-                    ->orderByDesc('year')
-                    ->orderBy('leave_type_id')
-                    ->with('leaveType');
-            },
-        ]);
+        $user->load('team');
+
+        $currentYear = (int) now()->year;
+        $leaveBalances = $this->buildCurrentYearLeaveBalances($user, $currentYear);
+
+        $payload = $user->toArray();
+        $payload['yearly_leave_records'] = $leaveBalances;
 
         return response()->json([
             'success' => true,
             'message' => 'User retrieved successfully.',
-            'data' => $user,
+            'data' => $payload,
         ], 200);
+    }
+
+    /**
+     * Merge active leave types with a user's current-year balance rows.
+     *
+     * Missing rows are synthesized in-memory (not persisted) with 0.0 balances
+     * and the leaveType relation attached for frontend rendering.
+     *
+     * @return Collection<int, UserYearlyLeaveRecord>
+     */
+    private function buildCurrentYearLeaveBalances(User $user, int $year): Collection
+    {
+        $allLeaveTypes = LeaveType::query()
+            ->where('is_active', true)
+            ->orderBy('leave_type_code')
+            ->get();
+
+        $userRecords = UserYearlyLeaveRecord::query()
+            ->with('leaveType')
+            ->where('user_id', $user->id)
+            ->where('year', $year)
+            ->get()
+            ->keyBy('leave_type_id');
+
+        return $allLeaveTypes->map(static function (LeaveType $leaveType) use ($user, $userRecords, $year): UserYearlyLeaveRecord {
+            if ($userRecords->has($leaveType->id)) {
+                return $userRecords->get($leaveType->id);
+            }
+
+            $record = new UserYearlyLeaveRecord([
+                'user_id' => $user->id,
+                'leave_type_id' => $leaveType->id,
+                'year' => $year,
+                'assigned_days' => 0.0,
+                'taken_days' => 0.0,
+            ]);
+            $record->setRelation('leaveType', $leaveType);
+
+            return $record;
+        })->values();
     }
 
     /**

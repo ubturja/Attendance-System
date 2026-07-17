@@ -15,6 +15,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { AssignLeaveSlideOver } from '../../components/ui/AssignLeaveSlideOver';
 import { LeaveBalanceSlideOver } from '../../components/ui/LeaveBalanceSlideOver';
 import { SlideOver } from '../../components/ui/SlideOver';
 import {
@@ -119,30 +120,6 @@ interface CreateUserFormState {
   is_active: boolean;
 }
 
-interface LeaveTypeOption {
-  id: number;
-  leave_type_code: string;
-  name: string;
-  is_active: boolean;
-}
-
-interface AssignLeavePayload {
-  leave_type_id: number;
-  year: number;
-  assigned_days: number;
-}
-
-interface AssignLeaveVariables {
-  userId: number;
-  payload: AssignLeavePayload;
-}
-
-interface AssignLeaveFormState {
-  leave_type_id: string;
-  year: string;
-  assigned_days: string;
-}
-
 const EMPTY_CREATE_USER_FORM: CreateUserFormState = {
   name: '',
   email: '',
@@ -152,18 +129,6 @@ const EMPTY_CREATE_USER_FORM: CreateUserFormState = {
   team_id: '',
   is_active: true,
 };
-
-function getCurrentYear(): number {
-  return new Date().getFullYear();
-}
-
-function createEmptyAssignLeaveForm(): AssignLeaveFormState {
-  return {
-    leave_type_id: '',
-    year: String(getCurrentYear()),
-    assigned_days: '',
-  };
-}
 
 async function fetchUsers(isArchived: boolean, search: string): Promise<UserRecord[]> {
   const params: Record<string, string> = {};
@@ -204,17 +169,6 @@ async function saveUser({ userId, payload }: SaveUserVariables): Promise<UserRec
   }
 
   return createUser(payload as CreateUserPayload);
-}
-
-async function fetchAllocationLeaveTypes(): Promise<LeaveTypeOption[]> {
-  const response = await api.get<ApiSuccessResponse<LeaveTypeOption[]>>('/leave-types', {
-    params: { requires_allocation: true },
-  });
-  return response.data.data;
-}
-
-async function assignLeaveAllocation({ userId, payload }: AssignLeaveVariables): Promise<void> {
-  await api.put<ApiSuccessResponse<unknown>>(`/admin/leave-allocations/${userId}`, payload);
 }
 
 async function deleteUser(userId: number): Promise<void> {
@@ -311,10 +265,6 @@ export default function Users() {
   const isViewOnly = isEditMode && isUserArchived(editingUser);
 
   const [allocationUser, setAllocationUser] = useState<UserRecord | null>(null);
-  const [allocationForm, setAllocationForm] = useState<AssignLeaveFormState>(
-    createEmptyAssignLeaveForm,
-  );
-  const [allocationError, setAllocationError] = useState<string | undefined>();
   const [balanceModalUserId, setBalanceModalUserId] = useState<number | null>(null);
 
   const {
@@ -329,11 +279,6 @@ export default function Users() {
   const teamsQuery = useQuery({
     queryKey: queryKeys.teams.admin,
     queryFn: fetchTeams,
-  });
-
-  const leaveTypesQuery = useQuery({
-    queryKey: queryKeys.leaveTypes.allocation,
-    queryFn: fetchAllocationLeaveTypes,
   });
 
   function handleSearchChange(value: string): void {
@@ -376,23 +321,6 @@ export default function Users() {
             ? 'Unable to update user. Please try again.'
             : 'Unable to create user. Please try again.',
         ),
-      );
-    },
-  });
-
-  const assignLeaveMutation = useMutation({
-    mutationFn: assignLeaveAllocation,
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.users.admin });
-      void queryClient.invalidateQueries({
-        queryKey: ['admin', 'user', variables.userId, 'balances'],
-      });
-      invalidateReportQueries(queryClient);
-      handleCloseAllocationPanel();
-    },
-    onError: (error) => {
-      setAllocationError(
-        getMutationErrorMessage(error, 'Unable to assign leave allocation. Please try again.'),
       );
     },
   });
@@ -510,58 +438,16 @@ export default function Users() {
 
   function handleOpenAllocationPanel(user: UserRecord) {
     setAllocationUser(user);
-    setAllocationForm(createEmptyAssignLeaveForm());
-    setAllocationError(undefined);
   }
 
   function handleCloseAllocationPanel() {
     setAllocationUser(null);
-    setAllocationForm(createEmptyAssignLeaveForm());
-    setAllocationError(undefined);
-  }
-
-  function handleAssignLeave() {
-    if (allocationUser === null) {
-      return;
-    }
-
-    setAllocationError(undefined);
-
-    const leaveTypeId = Number.parseInt(allocationForm.leave_type_id, 10);
-    const year = Number.parseInt(allocationForm.year, 10);
-    const assignedDays = Number.parseFloat(allocationForm.assigned_days);
-
-    if (Number.isNaN(leaveTypeId)) {
-      setAllocationError('Please select a leave type.');
-      return;
-    }
-
-    if (Number.isNaN(year)) {
-      setAllocationError('Please enter a valid year.');
-      return;
-    }
-
-    if (Number.isNaN(assignedDays) || assignedDays < 0) {
-      setAllocationError('Assigned days must be zero or greater.');
-      return;
-    }
-
-    assignLeaveMutation.mutate({
-      userId: allocationUser.id,
-      payload: {
-        leave_type_id: leaveTypeId,
-        year,
-        assigned_days: assignedDays,
-      },
-    });
   }
 
   const isSaving = saveUserMutation.isPending;
   const isPanelBusy =
     isSaving || deleteUserMutation.isPending || restoreUserMutation.isPending;
-  const isAssigning = assignLeaveMutation.isPending;
   const teamOptions = teamsQuery.data ?? [];
-  const leaveTypeOptions = leaveTypesQuery.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -642,7 +528,7 @@ export default function Users() {
               <TableHead>Team</TableHead>
               <TableHead>Leave Balance</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-24 text-right">Actions</TableHead>
+              <TableHead className="w-24 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           {isLoading ? (
@@ -1057,121 +943,11 @@ export default function Users() {
         </div>
       </SlideOver>
 
-      <SlideOver
+      <AssignLeaveSlideOver
         isOpen={allocationUser !== null}
+        user={allocationUser}
         onClose={handleCloseAllocationPanel}
-        title="Assign Leave Allocation"
-        description={
-          allocationUser !== null
-            ? `Set the yearly leave quota for ${allocationUser.name}.`
-            : 'Set the yearly leave quota for this user.'
-        }
-      >
-        <div className="flex flex-1 flex-col gap-5 p-6">
-          {allocationError !== undefined ? (
-            <Alert variant="error">{allocationError}</Alert>
-          ) : null}
-
-          <div className="flex w-full flex-col gap-1.5">
-            <label
-              htmlFor="allocation-leave-type"
-              className="text-sm font-medium leading-none text-slate-700"
-            >
-              Leave Type
-            </label>
-            <div className="relative">
-              <select
-                id="allocation-leave-type"
-                value={allocationForm.leave_type_id}
-                disabled={isAssigning || leaveTypesQuery.isLoading}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setAllocationForm((previous) => ({ ...previous, leave_type_id: value }));
-                  if (allocationError !== undefined) {
-                    setAllocationError(undefined);
-                  }
-                }}
-                className={cn(
-                  'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                  'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
-                )}
-              >
-                <option value="">Select a leave type</option>
-                {leaveTypeOptions.map((leaveType) => (
-                  <option key={leaveType.id} value={String(leaveType.id)}>
-                    {leaveType.leave_type_code} — {leaveType.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-            </div>
-            {leaveTypesQuery.isError ? (
-              <Alert variant="error" className="text-xs">
-                Failed to load leave types. Please try again.
-              </Alert>
-            ) : null}
-          </div>
-
-          <Input
-            id="allocation-year"
-            label="Year"
-            type="number"
-            min={2000}
-            max={2100}
-            placeholder="e.g. 2026"
-            value={allocationForm.year}
-            disabled={isAssigning}
-            onChange={(event) => {
-              const value = event.target.value;
-              setAllocationForm((previous) => ({ ...previous, year: value }));
-              if (allocationError !== undefined) {
-                setAllocationError(undefined);
-              }
-            }}
-          />
-
-          <Input
-            id="allocation-assigned-days"
-            label="Assigned Days"
-            type="number"
-            min={0}
-            step={0.5}
-            placeholder="e.g. 14.5"
-            value={allocationForm.assigned_days}
-            disabled={isAssigning}
-            onChange={(event) => {
-              const value = event.target.value;
-              setAllocationForm((previous) => ({ ...previous, assigned_days: value }));
-              if (allocationError !== undefined) {
-                setAllocationError(undefined);
-              }
-            }}
-          />
-        </div>
-
-        <div className="mt-auto flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleCloseAllocationPanel}
-            disabled={isAssigning}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            onClick={handleAssignLeave}
-            disabled={isAssigning}
-          >
-            {isAssigning ? 'Assigning...' : 'Assign Leave'}
-          </Button>
-        </div>
-      </SlideOver>
+      />
 
       <LeaveBalanceSlideOver
         isOpen={balanceModalUserId !== null}

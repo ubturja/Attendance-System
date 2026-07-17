@@ -229,6 +229,60 @@ export default function MonthlyReport() {
     }
   }
 
+  function handleExportCSV(): void {
+    if (!rows || rows.length === 0) {
+      return;
+    }
+
+    const headers = [
+      'Name',
+      'Team',
+      ...calendarDays.map((day) => String(day.date)),
+      ...SUMMARY_HEADERS,
+    ];
+
+    const dataRows = rows.map((row) => {
+      const cells: (string | number)[] = [row.user_name, row.team_name || '-'];
+
+      for (const day of calendarDays) {
+        const code = getDailyCode(row.daily_records, day.date);
+        cells.push(code === '—' ? '-' : code);
+      }
+
+      cells.push(
+        row.totals.annual,
+        row.totals.sick,
+        row.totals.other,
+        row.total_wfh,
+        row.total_work_in_office,
+      );
+
+      return cells;
+    });
+
+    const escapeCell = (value: string | number): string => {
+      const stringValue = String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvContent = [headers, ...dataRows]
+      .map((rowCells) => rowCells.map(escapeCell).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `monthly_attendance_report_${reportYear}_${String(reportMonth).padStart(2, '0')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -296,8 +350,8 @@ export default function MonthlyReport() {
             type="button"
             variant="outline"
             size="md"
-            disabled
-            title="Feature coming soon"
+            onClick={handleExportCSV}
+            disabled={isLoading || rows.length === 0}
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Export to CSV

@@ -86,11 +86,13 @@ class UserObserver
      * Handle the User "deleted" event (soft-delete / offboarding).
      *
      * Close every open membership window so archived team history does not
-     * treat the offboarded user as an active member.
+     * treat the offboarded user as an active member, and revoke all Sanctum
+     * tokens so the offboarded user cannot keep using existing sessions.
      */
     public function deleted(User $user): void
     {
         $this->closeOpenMembershipWindows($user);
+        $user->tokens()->delete();
     }
 
     /**

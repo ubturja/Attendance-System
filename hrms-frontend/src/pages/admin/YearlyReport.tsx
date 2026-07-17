@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, ChevronDown, Loader2 } from 'lucide-react';
+import { Calendar, ChevronDown, Download, Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Alert } from '../../components/ui/Alert';
+import { Button } from '../../components/ui/Button';
 import api from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
@@ -118,6 +119,71 @@ export default function YearlyReport() {
     });
   }
 
+  function handleExportCSV(): void {
+    if (!rows || rows.length === 0) {
+      return;
+    }
+
+    const leaveTypeHeaders = leaveTypeColumns.flatMap((code) => [
+      `${code} Assigned`,
+      `${code} Taken`,
+      `${code} Remaining`,
+    ]);
+
+    const headers = [
+      'Name',
+      'Team',
+      ...leaveTypeHeaders,
+      'Annual Remaining',
+      'Total Absences',
+      'Total WFH Days',
+      'Total Office Days',
+    ];
+
+    const dataRows = rows.map((row) => {
+      const cells: (string | number)[] = [row.user_name ?? '-', row.team_name || '-'];
+
+      for (const code of leaveTypeColumns) {
+        cells.push(
+          getPivotValue(row, code, 'assigned'),
+          getPivotValue(row, code, 'taken'),
+          getPivotValue(row, code, 'remaining'),
+        );
+      }
+
+      cells.push(
+        row.annual_leave_remaining ?? 0,
+        row.total_absences ?? 0,
+        row.total_wfh ?? 0,
+        row.total_work_in_office ?? 0,
+      );
+
+      return cells;
+    });
+
+    const escapeCell = (value: string | number): string => {
+      const stringValue = String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvContent = [headers, ...dataRows]
+      .map((rowCells) => rowCells.map(escapeCell).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `yearly_leave_balance_report_${resolvedYear}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -185,6 +251,19 @@ export default function YearlyReport() {
               aria-hidden="true"
             />
           </div>
+        </div>
+
+        <div className="ml-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={handleExportCSV}
+            disabled={isLoading || rows.length === 0}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export to CSV
+          </Button>
         </div>
       </div>
 

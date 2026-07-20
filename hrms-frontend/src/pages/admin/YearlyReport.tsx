@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import api from '../../lib/api';
-import { queryKeys } from '../../lib/queryKeys';
+import { queryKeys, REPORT_REFETCH_INTERVAL_MS } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -92,6 +92,8 @@ export default function YearlyReport() {
   } = useQuery({
     queryKey: queryKeys.reports.yearly(resolvedYear, teamId),
     queryFn: () => fetchYearlyReport(resolvedYear, teamId),
+    refetchInterval: REPORT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: teams = [] } = useQuery({

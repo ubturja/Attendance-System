@@ -9,8 +9,8 @@ use App\Http\Requests\ApiFormRequest;
 /**
  * Validates Admin leave type creation payloads.
  *
- * Accepts only leave_type_code and name — is_active defaults to true at the
- * database layer per ERD (Admin toggles via update endpoint).
+ * Accepts leave_type_code, name, and optional is_quota_based.
+ * is_active defaults to true at the database layer per ERD.
  */
 class StoreLeaveTypeRequest extends ApiFormRequest
 {
@@ -27,6 +27,9 @@ class StoreLeaveTypeRequest extends ApiFormRequest
 
             // Human-readable label for Admin UI and reports (VARCHAR 191).
             'name' => ['required', 'string', 'max:191'],
+
+            // When false, type appears in attendance dropdowns but not Assign Leave grids.
+            'is_quota_based' => ['sometimes', 'boolean'],
         ];
     }
 }

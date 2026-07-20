@@ -59,7 +59,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::middleware(['role:Admin'])->prefix('admin')->group(function (): void {
 
         // Module 2: Team & User Management API — full CRUD for HR Admins.
-        Route::apiResource('users', UserController::class);
+        // show allows soft-deleted users so Leave Balance / Assign Leave modals work for archived accounts.
+        Route::apiResource('users', UserController::class)->withTrashed(['show']);
         Route::patch('/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('teams', TeamController::class);
         Route::patch('/teams/{id}/restore', [TeamController::class, 'restore']);
@@ -73,8 +74,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
         // Module 3: Leave Allocation — yearly balance assignment and adjustment.
         Route::get('/leave-allocations', [LeaveAllocationController::class, 'index']);
-        Route::get('/leave-allocations/{user}', [LeaveAllocationController::class, 'show']);
-        Route::put('/leave-allocations/{user}', [LeaveAllocationController::class, 'update']);
+        Route::get('/leave-allocations/{user}', [LeaveAllocationController::class, 'show'])->withTrashed();
+        Route::put('/leave-allocations/{user}', [LeaveAllocationController::class, 'update'])->withTrashed();
 
         // Module 3: Manual HR Control — copy source_year allocations to target_year (idempotent).
         Route::post('/leave-rollover', [LeaveRolloverController::class, 'store']);

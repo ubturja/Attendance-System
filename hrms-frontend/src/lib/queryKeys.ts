@@ -5,8 +5,8 @@ export const queryKeys = {
   leaveTypes: {
     admin: ['admin', 'leave-types'] as const,
     active: ['leave-types', 'active'] as const,
-    /** Quota leave types for allocation UI (`requires_allocation=true`). */
-    allocation: ['leave-types', 'requires_allocation', true] as const,
+    /** Quota leave types for allocation UI (`is_quota_based=true`). */
+    allocation: ['leave-types', 'is_quota_based', true] as const,
   },
   users: {
     admin: ['admin', 'users'] as const,

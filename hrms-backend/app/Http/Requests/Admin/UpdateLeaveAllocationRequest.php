@@ -10,7 +10,8 @@ use App\Http\Requests\ApiFormRequest;
  * Validates Admin bulk assignment of yearly leave quotas for a user.
  *
  * Accepts a calendar year and an allocations array — one entry per leave type.
- * Values map to DECIMAL(8,2) columns; remaining_days is never submitted.
+ * Admin assignments must be whole days; the DECIMAL(8,2) column still allows
+ * fractional taken_days (e.g. 0.5 half-day deductions). remaining_days is never submitted.
  */
 class UpdateLeaveAllocationRequest extends ApiFormRequest
 {
@@ -31,8 +32,8 @@ class UpdateLeaveAllocationRequest extends ApiFormRequest
             // Target leave category for each allocation row.
             'allocations.*.leave_type_id' => ['required', 'integer', 'exists:leave_types,id'],
 
-            // Admin-assigned yearly quota (supports fractional values e.g., 14.5).
-            'allocations.*.assigned_days' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
+            // Admin-assigned yearly quota — whole days only (half-day usage is deducted via taken_days).
+            'allocations.*.assigned_days' => ['required', 'integer', 'min:0'],
         ];
     }
 }

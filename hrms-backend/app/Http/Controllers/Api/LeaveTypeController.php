@@ -24,17 +24,21 @@ class LeaveTypeController extends Controller
      *
      * Authenticated endpoint — any valid Sanctum token (Admin or Employee).
      * Filters WHERE is_active = true per HighLevelArchitecture dynamic dropdown logic.
-     * Optional query: ?requires_allocation=true|false filters quota vs non-quota types.
+     * Optional query: ?is_quota_based=true|false filters quota vs attendance-only types.
+     * (Legacy alias: ?requires_allocation= still accepted for backward compatibility.)
      */
     public function index(Request $request): JsonResponse
     {
         // Scope to active, non-trashed records only — inactive/archived hidden from attendance UI.
+        // Intentionally does NOT default-filter is_quota_based so WFH remains selectable.
         $query = LeaveType::query()
             ->where('is_active', true)
             ->orderBy('leave_type_code');
 
-        if ($request->has('requires_allocation')) {
-            $query->where('requires_allocation', $request->boolean('requires_allocation'));
+        if ($request->has('is_quota_based')) {
+            $query->where('is_quota_based', $request->boolean('is_quota_based'));
+        } elseif ($request->has('requires_allocation')) {
+            $query->where('is_quota_based', $request->boolean('requires_allocation'));
         }
 
         $leaveTypes = $query->get();
@@ -85,13 +89,19 @@ class LeaveTypeController extends Controller
      *
      * StoreLeaveTypeRequest validates leave_type_code uniqueness and name length.
      * is_active defaults to true via database default — not accepted on create.
+     * is_quota_based may be supplied; defaults to true when omitted.
      */
     public function store(StoreLeaveTypeRequest $request): JsonResponse
     {
-        // Extract validated leave_type_code and name — mass assignment safe via $fillable.
+        // Extract validated fields — mass assignment safe via $fillable.
         $validated = $request->validated();
 
-        // Insert row; is_active = true applied by MySQL column default (ERD).
+        // Keep legacy requires_allocation in sync with is_quota_based when present.
+        if (array_key_exists('is_quota_based', $validated)) {
+            $validated['requires_allocation'] = $validated['is_quota_based'];
+        }
+
+        // Insert row; is_active / is_quota_based defaults applied by MySQL when omitted.
         $leaveType = LeaveType::query()->create($validated);
 
         return response()->json([
@@ -102,17 +112,20 @@ class LeaveTypeController extends Controller
     }
 
     /**
-     * Toggle is_active status on an existing leave type (Admin only).
+     * Update is_active and/or is_quota_based on an existing leave type (Admin only).
      *
-     * UpdateLeaveTypeRequest accepts only is_active — deactivating removes the
-     * type from the index dropdown without deleting historical FK references.
+     * Deactivating removes the type from the attendance dropdown without deleting
+     * historical FK references. is_quota_based controls Assign Leave / balance grids.
      */
     public function update(UpdateLeaveTypeRequest $request, LeaveType $leaveType): JsonResponse
     {
-        // Single-field update — boolean cast ensures proper MySQL tinyint persistence.
-        $leaveType->is_active = $request->validated('is_active');
+        $validated = $request->validated();
 
-        // Persist toggle to leave_types table.
+        if (array_key_exists('is_quota_based', $validated)) {
+            $validated['requires_allocation'] = $validated['is_quota_based'];
+        }
+
+        $leaveType->fill($validated);
         $leaveType->save();
 
         return response()->json([

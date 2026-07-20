@@ -32,15 +32,18 @@ interface LeaveTypeRecord {
   leave_type_code: string;
   name: string;
   is_active: boolean;
+  is_quota_based: boolean;
 }
 
 interface CreateLeaveTypePayload {
   leave_type_code: string;
   name: string;
+  is_quota_based: boolean;
 }
 
 interface UpdateLeaveTypePayload {
-  is_active: boolean;
+  is_active?: boolean;
+  is_quota_based?: boolean;
 }
 
 async function fetchLeaveTypes(isArchived: boolean): Promise<LeaveTypeRecord[]> {
@@ -88,7 +91,7 @@ function LeaveTypesTableSkeleton() {
   return (
     <TableBody>
       <TableRow className="hover:bg-transparent">
-        <TableCell colSpan={4}>
+        <TableCell colSpan={5}>
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             Loading...
@@ -106,6 +109,7 @@ export default function LeaveTypes() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
+  const [newIsQuotaBased, setNewIsQuotaBased] = useState(true);
   const [formError, setFormError] = useState<string | undefined>();
   const [actionError, setActionError] = useState<string | undefined>();
   const [actionSuccess, setActionSuccess] = useState<string | undefined>();
@@ -135,11 +139,11 @@ export default function LeaveTypes() {
   const updateLeaveTypeMutation = useMutation({
     mutationFn: ({
       leaveTypeId,
-      is_active,
+      payload,
     }: {
       leaveTypeId: number;
-      is_active: boolean;
-    }) => updateLeaveTypeStatus(leaveTypeId, { is_active }),
+      payload: UpdateLeaveTypePayload;
+    }) => updateLeaveTypeStatus(leaveTypeId, payload),
     onSuccess: () => {
       setActionError(undefined);
       setActionSuccess(undefined);
@@ -148,7 +152,7 @@ export default function LeaveTypes() {
     onError: (error) => {
       setActionSuccess(undefined);
       setActionError(
-        getMutationErrorMessage(error, 'Unable to update leave type status. Please try again.'),
+        getMutationErrorMessage(error, 'Unable to update leave type. Please try again.'),
       );
     },
   });
@@ -187,6 +191,7 @@ export default function LeaveTypes() {
     setPanelOpen(false);
     setNewCode('');
     setNewName('');
+    setNewIsQuotaBased(true);
     setFormError(undefined);
   }
 
@@ -195,6 +200,7 @@ export default function LeaveTypes() {
     createLeaveTypeMutation.mutate({
       leave_type_code: newCode.trim(),
       name: newName.trim(),
+      is_quota_based: newIsQuotaBased,
     });
   }
 
@@ -203,7 +209,16 @@ export default function LeaveTypes() {
     setActionSuccess(undefined);
     updateLeaveTypeMutation.mutate({
       leaveTypeId: leaveType.id,
-      is_active: !leaveType.is_active,
+      payload: { is_active: !leaveType.is_active },
+    });
+  }
+
+  function toggleQuotaBased(leaveType: LeaveTypeRecord) {
+    setActionError(undefined);
+    setActionSuccess(undefined);
+    updateLeaveTypeMutation.mutate({
+      leaveTypeId: leaveType.id,
+      payload: { is_quota_based: !leaveType.is_quota_based },
     });
   }
 
@@ -287,6 +302,7 @@ export default function LeaveTypes() {
               <TableHead>Leave Code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead className="w-40">Status</TableHead>
+              <TableHead className="w-40">Quota Based</TableHead>
               <TableHead className="w-28">
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -297,10 +313,10 @@ export default function LeaveTypes() {
           ) : (
             <TableBody>
               {isError ? (
-                <TableErrorRow colSpan={4} />
+                <TableErrorRow colSpan={5} />
               ) : leaveTypes.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                  <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-500">
                     {isArchived ? 'No archived leave types found.' : 'No leave types found.'}
                   </TableCell>
                 </TableRow>
@@ -345,6 +361,41 @@ export default function LeaveTypes() {
                                 ? 'Active'
                                 : 'Inactive'}
                           </Badge>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-middle">
+                      {isArchived ? (
+                        <span className="text-sm text-slate-500">
+                          {row.is_quota_based ? 'Yes' : 'No'}
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.is_quota_based}
+                            aria-label={`Toggle ${row.name} quota based ${row.is_quota_based ? 'off' : 'on'}`}
+                            disabled={isRowBusy}
+                            onClick={() => toggleQuotaBased(row)}
+                            className={cn(
+                              'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2',
+                              'disabled:cursor-not-allowed disabled:opacity-60',
+                              row.is_quota_based ? 'bg-brand' : 'bg-slate-300',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'pointer-events-none block h-5 w-5 shrink-0 rounded-full bg-white shadow transition-transform',
+                                row.is_quota_based ? 'translate-x-5' : 'translate-x-0',
+                                togglingLeaveTypeId === row.id && 'opacity-70',
+                              )}
+                            />
+                          </button>
+                          <span className="text-sm text-slate-600">
+                            {row.is_quota_based ? 'Yes' : 'No'}
+                          </span>
                         </div>
                       )}
                     </TableCell>
@@ -422,6 +473,27 @@ export default function LeaveTypes() {
               }
             }}
           />
+
+          <label
+            htmlFor="leave-type-quota-based"
+            className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3"
+          >
+            <input
+              id="leave-type-quota-based"
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+              checked={newIsQuotaBased}
+              disabled={isSaving}
+              onChange={(event) => setNewIsQuotaBased(event.target.checked)}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-slate-800">Is Quota Based?</span>
+              <span className="text-xs text-slate-500">
+                When enabled, this type appears in Assign Leave and yearly balances.
+                Turn off for attendance-only statuses like Work from Home.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div className="mt-auto flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">

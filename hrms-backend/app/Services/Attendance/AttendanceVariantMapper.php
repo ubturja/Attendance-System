@@ -52,8 +52,12 @@ class AttendanceVariantMapper
     /** Half-day variant consumption amount — morning/afternoon fractional tracking. */
     private const HALF_DAY_DEDUCTION = 0.5;
 
-    /** @var Collection<string, int>|null Cached leave_type_code → id map for the request lifecycle. */
-    private ?Collection $leaveTypeIdsByCode = null;
+    /**
+     * Cached leave_type_code → {id, is_quota_based} map for the request lifecycle.
+     *
+     * @var Collection<string, array{id: int, is_quota_based: bool}>|null
+     */
+    private ?Collection $leaveTypesByCodeCache = null;
 
     /**
      * Resolve a submitted frontend code into persistence and deduction instructions.
@@ -88,48 +92,55 @@ class AttendanceVariantMapper
                 throw AttendanceValidationException::unknownParentLeaveType($code, $parentCode);
             }
 
-            $parentLeaveTypeId = (int) $leaveTypes->get($parentCode);
+            /** @var array{id: int, is_quota_based: bool} $parent */
+            $parent = $leaveTypes->get($parentCode);
 
             return new MappedAttendanceCode(
-                leaveTypeId: $parentLeaveTypeId,
-                balanceLeaveTypeId: $parentLeaveTypeId,
+                leaveTypeId: $parent['id'],
+                balanceLeaveTypeId: $parent['id'],
                 deductionAmount: self::HALF_DAY_DEDUCTION,
-                requiresBalanceCheck: true,
+                requiresBalanceCheck: $parent['is_quota_based'],
                 submittedCode: $code,
                 parentCode: $parentCode,
             );
         }
 
         // ── Step 3: Standard leave codes (A, S, M, …) ─────────────────────────
-        // Direct 1.0-day deduction against the matching leave_types row.
+        // Direct 1.0-day deduction against the matching leave_types row when quota-based.
         if (! $leaveTypes->has($code)) {
             throw AttendanceValidationException::unknownAttendanceCode($code);
         }
 
-        $leaveTypeId = (int) $leaveTypes->get($code);
+        /** @var array{id: int, is_quota_based: bool} $leaveType */
+        $leaveType = $leaveTypes->get($code);
 
         return new MappedAttendanceCode(
-            leaveTypeId: $leaveTypeId,
-            balanceLeaveTypeId: $leaveTypeId,
+            leaveTypeId: $leaveType['id'],
+            balanceLeaveTypeId: $leaveType['id'],
             deductionAmount: self::FULL_DAY_DEDUCTION,
-            requiresBalanceCheck: true,
+            requiresBalanceCheck: $leaveType['is_quota_based'],
             submittedCode: $code,
         );
     }
 
     /**
-     * Load active leave types keyed by leave_type_code → id (cached per mapper instance).
+     * Load active leave types keyed by leave_type_code (cached per mapper instance).
      *
-     * @return Collection<string, int>
+     * @return Collection<string, array{id: int, is_quota_based: bool}>
      */
     private function leaveTypesByCode(): Collection
     {
-        if ($this->leaveTypeIdsByCode === null) {
-            $this->leaveTypeIdsByCode = LeaveType::query()
+        if ($this->leaveTypesByCodeCache === null) {
+            $this->leaveTypesByCodeCache = LeaveType::query()
                 ->where('is_active', true)
-                ->pluck('id', 'leave_type_code');
+                ->get(['id', 'leave_type_code', 'is_quota_based'])
+                ->keyBy('leave_type_code')
+                ->map(static fn (LeaveType $leaveType): array => [
+                    'id' => (int) $leaveType->id,
+                    'is_quota_based' => (bool) $leaveType->is_quota_based,
+                ]);
         }
 
-        return $this->leaveTypeIdsByCode;
+        return $this->leaveTypesByCodeCache;
     }
 }

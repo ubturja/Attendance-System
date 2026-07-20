@@ -19,7 +19,11 @@ import {
   type LeaveTypeOptionSource,
 } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
-import { invalidateReportQueries, queryKeys } from '../../lib/queryKeys';
+import {
+  invalidateAttendanceRelatedQueries,
+  queryKeys,
+  REPORT_REFETCH_INTERVAL_MS,
+} from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -223,6 +227,8 @@ export default function DailyReport() {
   } = useQuery({
     queryKey: queryKeys.reports.daily(date, teamId),
     queryFn: () => fetchDailyReport(date, teamId),
+    refetchInterval: REPORT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: teams = [] } = useQuery({
@@ -252,8 +258,7 @@ export default function DailyReport() {
       setOverrideError(undefined);
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['reports', 'daily'] });
-      invalidateReportQueries(queryClient);
+      invalidateAttendanceRelatedQueries(queryClient);
     },
     onError: (error) => {
       setOverrideError(

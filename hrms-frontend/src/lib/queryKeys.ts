@@ -12,6 +12,8 @@ export const queryKeys = {
     admin: ['admin', 'users'] as const,
     list: (isArchived: boolean, search: string) =>
       ['admin', 'users', 'list', isArchived ? 'archived' : 'current', search] as const,
+    /** Prefix for all per-user admin balance queries. */
+    balancesRoot: ['admin', 'user'] as const,
     balances: (userId: number) => ['admin', 'user', userId, 'balances'] as const,
   },
   teams: {
@@ -33,6 +35,9 @@ export const queryKeys = {
   },
 } as const;
 
+/** Live-refresh interval for open report grids (cross-session attendance updates). */
+export const REPORT_REFETCH_INTERVAL_MS = 3_000;
+
 /** Refetch admin catalog and employee attendance dropdown after leave type mutations. */
 export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.admin });
@@ -40,7 +45,18 @@ export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.allocation });
 }
 
-/** Refetch yearly (and related) report matrices after balance or attendance changes. */
-export function invalidateReportQueries(queryClient: QueryClient): void {
+/**
+ * Invalidate every cache that depends on attendance or leave balances.
+ *
+ * Prefix matches cover profile (+ by-date), all reports, and admin user balances.
+ */
+export function invalidateAttendanceRelatedQueries(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
   void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.users.balancesRoot });
+}
+
+/** Alias used by leave-allocation and user mutations — same as {@link invalidateAttendanceRelatedQueries}. */
+export function invalidateReportQueries(queryClient: QueryClient): void {
+  invalidateAttendanceRelatedQueries(queryClient);
 }

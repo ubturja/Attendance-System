@@ -18,7 +18,7 @@ import { TableErrorRow } from '../ui/TableErrorRow';
 import api from '../../lib/api';
 import { buildAttendanceOptions } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
-import { invalidateReportQueries, queryKeys } from '../../lib/queryKeys';
+import { invalidateAttendanceRelatedQueries, queryKeys } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -248,6 +248,9 @@ export function SharedDashboard() {
   const teamMembers = profileQuery.data?.team?.users ?? [];
   const teamName = profileQuery.data?.team?.team_name ?? 'your team';
   const currentUserId = profileQuery.data?.id;
+  const hasExistingAttendance = teamMembers.some(
+    (member) => (member.attendance_logs?.length ?? 0) > 0,
+  );
 
   const attendanceOptions = useMemo(
     () => buildAttendanceOptions(leaveTypesQuery.data ?? []),
@@ -274,10 +277,14 @@ export function SharedDashboard() {
   const submitAttendanceMutation = useMutation({
     mutationFn: submitAttendance,
     onSuccess: () => {
-      setSubmitSuccess('Attendance submitted successfully.');
+      setSubmitSuccess(
+        hasExistingAttendance
+          ? 'Attendance updated successfully.'
+          : 'Attendance submitted successfully.',
+      );
       setSubmitError(undefined);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.profileByDate(selectedDate) });
-      invalidateReportQueries(queryClient);
+      // Refresh dashboard balances/attendance, all reports, and admin leave grids.
+      invalidateAttendanceRelatedQueries(queryClient);
     },
     onError: (error) => {
       setSubmitSuccess(undefined);
@@ -508,10 +515,14 @@ export function SharedDashboard() {
             disabled={isNotToday || !canSubmitAttendance || isSubmitting}
           >
             {isSubmitting
-              ? 'Submitting...'
+              ? hasExistingAttendance
+                ? 'Updating...'
+                : 'Submitting...'
               : isNotToday
                 ? 'Past Attendance is Read-Only'
-                : 'Submit Attendance'}
+                : hasExistingAttendance
+                  ? 'Update Attendance'
+                  : 'Submit Attendance'}
           </Button>
         </div>
       </form>

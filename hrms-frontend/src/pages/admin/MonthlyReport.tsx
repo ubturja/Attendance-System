@@ -12,7 +12,7 @@ import {
 } from '../../components/ui/Table';
 import { TableErrorRow } from '../../components/ui/TableErrorRow';
 import api from '../../lib/api';
-import { queryKeys } from '../../lib/queryKeys';
+import { queryKeys, REPORT_REFETCH_INTERVAL_MS } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -191,6 +191,8 @@ export default function MonthlyReport() {
   } = useQuery({
     queryKey: queryKeys.reports.monthly(reportYear, reportMonth, teamId),
     queryFn: () => fetchMonthlyReport(reportYear, reportMonth, teamId),
+    refetchInterval: REPORT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: teams = [] } = useQuery({

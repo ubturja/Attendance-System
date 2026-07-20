@@ -33,10 +33,10 @@ use Illuminate\Support\Facades\DB;
  *
  * HighLevelArchitecture.md workflow executed per record:
  *   1. Map frontend code (AO/OA→A 0.5, NO/ON→N 0.5, W/O/X→NULL bypass validation, standard→1.0).
- *   2. Reject duplicate (user_id, date) rows — one log per employee per day.
+ *   2. Upsert by (user_id, date) — same-day updates refund/deduct quota when the code changes.
  *   3. Validate remaining_days will not drop below zero after cumulative deductions.
- *   4. Increment taken_days on user_yearly_leave_records (0.0 when the date is a weekend).
- *   5. Insert attendance_logs row with resolved leave_type_id.
+ *   4. Adjust taken_days on user_yearly_leave_records for quota-based codes (0.0 on weekends).
+ *   5. Insert or update attendance_logs with resolved leave_type_id.
  */
 class AttendanceController extends Controller
 {
@@ -67,11 +67,11 @@ class AttendanceController extends Controller
      *   "message": "You can only submit or update attendance for today. Contact your Admin for past changes."
      * }
      *
-     * JSON response (422) — balance, duplicate, or mapping failure (entire batch rolled back):
+     * JSON response (422) — balance, duplicate-in-batch, or mapping failure (entire batch rolled back):
      * {
      *   "success": false,
-     *   "message": "Attendance already logged for this date.",
-     *   "errors": { "user_id": 5, "date": "2026-06-26" }
+     *   "message": "Insufficient leave balance for \"A\". Remaining: 0, requested deduction: 1.",
+     *   "errors": { "user_id": 5, "leave_type_code": "A", ... }
      * }
      */
     public function store(StoreAttendanceRequest $request): JsonResponse
@@ -98,8 +98,8 @@ class AttendanceController extends Controller
             $this->assertEmployeeTeamScope($authenticatedUser, $records);
 
             // ── ATOMIC BATCH: all records succeed or none persist ─────────────────
-            $createdLogs = DB::transaction(function () use ($records): array {
-                $createdLogs = [];
+            $savedLogs = DB::transaction(function () use ($records): array {
+                $savedLogs = [];
 
                 // In-memory accumulator for cumulative deductions within this batch.
                 /** @var array<string, float> $pendingDeductions */
@@ -115,7 +115,7 @@ class AttendanceController extends Controller
                     ->all();
 
                 foreach ($records as $record) {
-                    $createdLogs[] = $this->processRecord(
+                    $savedLogs[] = $this->processRecord(
                         record: $record,
                         pendingDeductions: $pendingDeductions,
                         leaveTypeCodesById: $leaveTypeCodesById,
@@ -123,7 +123,7 @@ class AttendanceController extends Controller
                     );
                 }
 
-                return $createdLogs;
+                return $savedLogs;
             });
         } catch (AttendanceValidationException $exception) {
             return response()->json([
@@ -136,7 +136,7 @@ class AttendanceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Attendance records saved successfully.',
-            'data' => $createdLogs,
+            'data' => $savedLogs,
         ], 201);
     }
 
@@ -185,7 +185,10 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Process a single attendance row inside the open transaction.
+     * Process a single attendance row inside the open transaction (create or same-day upsert).
+     *
+     * When an existing log is found for (user_id, date) and the attendance code changes,
+     * quota-based leave is refunded for the old code and deducted for the new code.
      *
      * @param  array{user_id: int, date: string, code: string}  $record
      * @param  array<string, float>  $pendingDeductions
@@ -202,10 +205,9 @@ class AttendanceController extends Controller
     ): AttendanceLog {
         $userId = (int) $record['user_id'];
         $date = $record['date'];
+        $newCode = strtoupper(trim($record['code']));
 
-        $this->assertNoDuplicateAttendance($userId, $date, $seenAttendanceKeys);
-
-        $mapped = $this->variantMapper->map($record['code']);
+        $this->assertUniqueInBatch($userId, $date, $seenAttendanceKeys);
 
         $targetUser = User::query()->findOrFail($userId);
 
@@ -213,8 +215,26 @@ class AttendanceController extends Controller
             throw AttendanceValidationException::userMustBeAssignedToTeam($targetUser->id);
         }
 
+        /** @var AttendanceLog|null $existing */
+        $existing = AttendanceLog::query()
+            ->where('user_id', $userId)
+            ->whereDate('date', $date)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing !== null) {
+            return $this->applyCodeChange(
+                log: $existing,
+                newCode: $newCode,
+                pendingDeductions: $pendingDeductions,
+                leaveTypeCodesById: $leaveTypeCodesById,
+            );
+        }
+
+        $mapped = $this->variantMapper->map($newCode);
         $year = (int) date('Y', strtotime($date));
 
+        // New log: deduct only when the mapped code is quota-based.
         if ($mapped->requiresBalanceCheck) {
             $this->validateAndReserveBalance(
                 mapped: $mapped,
@@ -230,7 +250,7 @@ class AttendanceController extends Controller
             'user_id' => $targetUser->id,
             'team_id' => $targetUser->team_id,
             'date' => $date,
-            'submitted_code' => strtoupper(trim($record['code'])),
+            'submitted_code' => $newCode,
             'leave_type_id' => $mapped->leaveTypeId,
         ]);
     }
@@ -257,7 +277,18 @@ class AttendanceController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                return $this->applyAdminCodeChange($log, $newCode, (int) $admin->id);
+                $pendingDeductions = [];
+                $leaveTypeCodesById = LeaveType::query()
+                    ->pluck('leave_type_code', 'id')
+                    ->all();
+
+                return $this->applyCodeChange(
+                    log: $log,
+                    newCode: $newCode,
+                    pendingDeductions: $pendingDeductions,
+                    leaveTypeCodesById: $leaveTypeCodesById,
+                    updatedBy: (int) $admin->id,
+                );
             });
         } catch (AttendanceValidationException $exception) {
             return response()->json([
@@ -303,15 +334,22 @@ class AttendanceController extends Controller
                     ->lockForUpdate()
                     ->first();
 
-                if ($existing !== null) {
-                    return $this->applyAdminCodeChange($existing, $newCode, (int) $admin->id);
-                }
-
-                $mapped = $this->variantMapper->map($newCode);
                 $leaveTypeCodesById = LeaveType::query()
                     ->pluck('leave_type_code', 'id')
                     ->all();
                 $pendingDeductions = [];
+
+                if ($existing !== null) {
+                    return $this->applyCodeChange(
+                        log: $existing,
+                        newCode: $newCode,
+                        pendingDeductions: $pendingDeductions,
+                        leaveTypeCodesById: $leaveTypeCodesById,
+                        updatedBy: (int) $admin->id,
+                    );
+                }
+
+                $mapped = $this->variantMapper->map($newCode);
                 $year = (int) date('Y', strtotime($date));
 
                 if ($mapped->requiresBalanceCheck) {
@@ -352,33 +390,37 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Apply a new attendance code to a locked log row (balance reverse + reserve).
+     * Apply a new attendance code to a locked log row (quota refund + deduct when code changes).
+     *
+     * Old quota-based codes are refunded; new quota-based codes are reserved.
+     * Non-quota codes (and weekends) skip ledger adjustments via requiresBalanceCheck / weekend guard.
+     *
+     * @param  array<string, float>  $pendingDeductions
+     * @param  array<int, string>  $leaveTypeCodesById
      *
      * @throws AttendanceValidationException
      */
-    private function applyAdminCodeChange(
+    private function applyCodeChange(
         AttendanceLog $log,
         string $newCode,
-        int $adminUserId,
+        array &$pendingDeductions,
+        array $leaveTypeCodesById,
+        ?int $updatedBy = null,
     ): AttendanceLog {
-        /** @var array<int, string> $leaveTypeCodesById */
-        $leaveTypeCodesById = LeaveType::query()
-            ->pluck('leave_type_code', 'id')
-            ->all();
-
         $oldCode = $this->resolveEffectiveCode($log, $leaveTypeCodesById);
 
         if ($oldCode !== $newCode) {
             $year = (int) $log->date->format('Y');
             $date = $log->date->toDateString();
 
+            // Refund old quota-based leave (is_quota_based → requiresBalanceCheck).
             $oldMapped = $this->variantMapper->map($oldCode);
             if ($oldMapped->requiresBalanceCheck) {
                 $this->releaseBalance($oldMapped, (int) $log->user_id, $year, $date);
             }
 
+            // Deduct new quota-based leave.
             $newMapped = $this->variantMapper->map($newCode);
-            $pendingDeductions = [];
 
             if ($newMapped->requiresBalanceCheck) {
                 $this->validateAndReserveBalance(
@@ -395,7 +437,10 @@ class AttendanceController extends Controller
             $log->leave_type_id = $newMapped->leaveTypeId;
         }
 
-        $log->updated_by = $adminUserId;
+        if ($updatedBy !== null) {
+            $log->updated_by = $updatedBy;
+        }
+
         $log->save();
 
         return $log->fresh(['leaveType', 'editor']);
@@ -491,13 +536,14 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Reject duplicate submissions for the same (user_id, date).
+     * Reject duplicate (user_id, date) pairs within a single request payload.
+     * Existing DB rows for today are upserted — not rejected.
      *
      * @param  array<string, true>  $seenAttendanceKeys
      *
      * @throws AttendanceValidationException
      */
-    private function assertNoDuplicateAttendance(
+    private function assertUniqueInBatch(
         int $userId,
         string $date,
         array &$seenAttendanceKeys,
@@ -505,16 +551,6 @@ class AttendanceController extends Controller
         $attendanceKey = "{$userId}_{$date}";
 
         if (isset($seenAttendanceKeys[$attendanceKey])) {
-            throw AttendanceValidationException::attendanceAlreadyLogged($userId, $date);
-        }
-
-        $alreadyLogged = AttendanceLog::query()
-            ->where('user_id', $userId)
-            ->whereDate('date', $date)
-            ->lockForUpdate()
-            ->exists();
-
-        if ($alreadyLogged) {
             throw AttendanceValidationException::attendanceAlreadyLogged($userId, $date);
         }
 

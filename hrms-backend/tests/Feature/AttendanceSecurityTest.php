@@ -146,7 +146,82 @@ class AttendanceSecurityTest extends TestCase
         $this->assertSame(0.0, $balance->remaining_days);
     }
 
-    public function test_duplicate_attendance_for_same_user_and_date_is_rejected(): void
+    public function test_same_day_attendance_upsert_updates_code_and_adjusts_quota_balance(): void
+    {
+        $team = Team::factory()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+        $annualLeave = LeaveType::factory()->annual()->create();
+        $sickLeave = LeaveType::factory()->create([
+            'leave_type_code' => 'S',
+            'name' => 'Sick Leave',
+            'is_quota_based' => true,
+        ]);
+
+        $annualBalance = UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $annualLeave->id,
+            'year' => (int) date('Y'),
+            'assigned_days' => 10.00,
+            'taken_days' => 0.00,
+        ]);
+
+        $sickBalance = UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $sickLeave->id,
+            'year' => (int) date('Y'),
+            'assigned_days' => 5.00,
+            'taken_days' => 0.00,
+        ]);
+
+        Sanctum::actingAs($employee);
+
+        $date = now()->toDateString();
+
+        $firstResponse = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => $date,
+                    'code' => 'A',
+                ],
+            ],
+        ]);
+
+        $firstResponse->assertCreated();
+        $this->assertDatabaseCount('attendance_logs', 1);
+
+        $annualBalance->refresh();
+        $this->assertSame(1.0, (float) $annualBalance->taken_days);
+
+        $updateResponse = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => $date,
+                    'code' => 'S',
+                ],
+            ],
+        ]);
+
+        $updateResponse->assertCreated();
+        $this->assertDatabaseCount('attendance_logs', 1);
+        $this->assertSame(
+            1,
+            AttendanceLog::query()
+                ->where('user_id', $employee->id)
+                ->whereDate('date', $date)
+                ->where('submitted_code', 'S')
+                ->where('leave_type_id', $sickLeave->id)
+                ->count(),
+        );
+
+        $annualBalance->refresh();
+        $sickBalance->refresh();
+        $this->assertSame(0.0, (float) $annualBalance->taken_days);
+        $this->assertSame(1.0, (float) $sickBalance->taken_days);
+    }
+
+    public function test_duplicate_user_and_date_within_same_batch_is_rejected(): void
     {
         $team = Team::factory()->create();
         $employee = User::factory()->employee()->forTeam($team)->create();
@@ -155,25 +230,23 @@ class AttendanceSecurityTest extends TestCase
 
         $date = now()->toDateString();
 
-        $payload = [
+        $response = $this->postJson('/api/attendance', [
             'records' => [
                 [
                     'user_id' => $employee->id,
                     'date' => $date,
                     'code' => 'O',
                 ],
+                [
+                    'user_id' => $employee->id,
+                    'date' => $date,
+                    'code' => 'W',
+                ],
             ],
-        ];
+        ]);
 
-        $firstResponse = $this->postJson('/api/attendance', $payload);
-
-        $firstResponse->assertCreated();
-        $this->assertDatabaseCount('attendance_logs', 1);
-
-        $duplicateResponse = $this->postJson('/api/attendance', $payload);
-
-        $duplicateResponse->assertUnprocessable();
-        $duplicateResponse->assertJson([
+        $response->assertUnprocessable();
+        $response->assertJson([
             'success' => false,
             'message' => 'Attendance already logged for this date.',
             'errors' => [
@@ -182,14 +255,7 @@ class AttendanceSecurityTest extends TestCase
             ],
         ]);
 
-        $this->assertDatabaseCount('attendance_logs', 1);
-        $this->assertSame(
-            1,
-            AttendanceLog::query()
-                ->where('user_id', $employee->id)
-                ->whereDate('date', $date)
-                ->count(),
-        );
+        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
     public function test_admin_can_override_attendance_code_and_adjust_balance(): void

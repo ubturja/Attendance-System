@@ -158,10 +158,27 @@ export function AssignLeaveSlideOver({
   }
 
   function handleAllocationChange(leaveTypeId: number, value: string): void {
-    setAllocations((previous) => ({
-      ...previous,
-      [leaveTypeId]: value === '' ? '' : Number(value),
-    }));
+    // Whole days only — block decimals at the UI layer (DB still supports 0.5 taken_days).
+    if (value.includes('.')) {
+      return;
+    }
+
+    if (value === '') {
+      setAllocations((previous) => ({
+        ...previous,
+        [leaveTypeId]: '',
+      }));
+    } else {
+      const parsed = Math.floor(Number(value));
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      setAllocations((previous) => ({
+        ...previous,
+        [leaveTypeId]: parsed,
+      }));
+    }
+
     if (formError !== undefined) {
       setFormError(undefined);
     }
@@ -184,8 +201,14 @@ export function AssignLeaveSlideOver({
     for (const [id, days] of Object.entries(allocations)) {
       const assignedDays = days === '' ? Number.NaN : Number(days);
 
-      if (Number.isNaN(assignedDays) || assignedDays < 0) {
-        setFormError('Assigned days must be zero or greater for every leave type.');
+      if (
+        Number.isNaN(assignedDays) ||
+        assignedDays < 0 ||
+        !Number.isInteger(assignedDays)
+      ) {
+        setFormError(
+          'Assigned days must be a whole number (0 or greater) for every leave type.',
+        );
         return;
       }
 
@@ -291,7 +314,7 @@ export function AssignLeaveSlideOver({
                         id={inputId}
                         type="number"
                         min={0}
-                        step={0.5}
+                        step={1}
                         aria-label={`Assigned days for ${leaveName}`}
                         value={value}
                         disabled={isAssigning || isFormLoading}

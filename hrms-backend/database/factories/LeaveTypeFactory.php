@@ -22,6 +22,7 @@ class LeaveTypeFactory extends Factory
             'leave_type_code' => strtoupper(Str::random(3)),
             'name' => fake()->words(2, true).' Leave',
             'is_active' => true,
+            'is_quota_based' => true,
             'requires_allocation' => true,
         ];
     }
@@ -31,6 +32,15 @@ class LeaveTypeFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'leave_type_code' => 'A',
             'name' => 'Annual Leave',
+        ]);
+    }
+
+    /** Attendance-only status (e.g. Work from Home) — excluded from Assign Leave. */
+    public function nonQuota(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'is_quota_based' => false,
+            'requires_allocation' => false,
         ]);
     }
 }

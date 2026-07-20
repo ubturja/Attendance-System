@@ -77,7 +77,7 @@ class UserController extends Controller
      * Persist a new user account with a bcrypt-hashed password.
      *
      * Atomically seeds zero-balance user_yearly_leave_records for every active
-     * leave type with requires_allocation = true so HR can immediately open the
+     * leave type with is_quota_based = true so HR can immediately open the
      * new hire's allocation profile and set assigned_days baselines. Non-quota
      * statuses (e.g. Work from Home) are excluded from the balance sheet.
      */
@@ -97,10 +97,10 @@ class UserController extends Controller
 
             $currentYear = (int) date('Y');
 
-            // Quota leave types only — exclude non-allocation codes (e.g. W = Work from Home).
+            // Quota leave types only — exclude attendance-only codes (e.g. W = Work from Home).
             $activeLeaveTypes = LeaveType::query()
                 ->where('is_active', true)
-                ->where('requires_allocation', true)
+                ->where('is_quota_based', true)
                 ->orderBy('leave_type_code')
                 ->get();
 
@@ -164,8 +164,10 @@ class UserController extends Controller
      */
     private function buildCurrentYearLeaveBalances(User $user, int $year): Collection
     {
+        // Assign Leave / balance grid — countable quotas only (exclude WFH etc.).
         $allLeaveTypes = LeaveType::query()
             ->where('is_active', true)
+            ->where('is_quota_based', true)
             ->orderBy('leave_type_code')
             ->get();
 

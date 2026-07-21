@@ -68,9 +68,13 @@ function getCurrentYear(): number {
   return new Date().getFullYear();
 }
 
-async function fetchUserLeaveBalances(userId: number): Promise<UserBalancePayload> {
+async function fetchUserLeaveBalances(
+  userId: number,
+  year: number,
+): Promise<UserBalancePayload> {
   const response = await api.get<ApiSuccessResponse<UserBalancePayload>>(
     `/admin/users/${userId}`,
+    { params: { year } },
   );
   return response.data.data;
 }
@@ -80,6 +84,10 @@ async function assignLeaveAllocations({
   payload,
 }: AssignLeaveVariables): Promise<void> {
   await api.put<ApiSuccessResponse<unknown>>(`/admin/leave-allocations/${userId}`, payload);
+}
+
+function isValidAllocationYear(year: number): boolean {
+  return !Number.isNaN(year) && year >= 2000 && year <= 2100;
 }
 
 export function AssignLeaveSlideOver({
@@ -92,18 +100,20 @@ export function AssignLeaveSlideOver({
   const [allocations, setAllocations] = useState<Record<number, number | ''>>({});
   const [formError, setFormError] = useState<string | undefined>();
 
+  const yearIsValid = isValidAllocationYear(year);
+
   const balancesQuery = useQuery({
     queryKey:
-      user !== null
-        ? queryKeys.users.balances(user.id)
+      user !== null && yearIsValid
+        ? queryKeys.users.balances(user.id, year)
         : ['admin', 'user', 'idle', 'balances'],
-    queryFn: () => fetchUserLeaveBalances(user!.id),
-    enabled: isOpen && user !== null,
+    queryFn: () => fetchUserLeaveBalances(user!.id, year),
+    enabled: isOpen && user !== null && yearIsValid,
   });
 
   const leaveBalanceRows = balancesQuery.data?.yearly_leave_records ?? [];
 
-  // Prefill year + assigned-days from the zero-merged backend balance sheet.
+  // Prefill assigned-days from the year-scoped zero-merged backend balance sheet.
   useEffect(() => {
     if (!isOpen || balancesQuery.data === undefined) {
       return;
@@ -114,10 +124,6 @@ export function AssignLeaveSlideOver({
 
     for (const record of records) {
       nextAllocations[record.leave_type_id] = record.assigned_days;
-    }
-
-    if (records[0] !== undefined) {
-      setYear(records[0].year);
     }
 
     setAllocations(nextAllocations);
@@ -137,7 +143,7 @@ export function AssignLeaveSlideOver({
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.admin });
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.users.balances(variables.userId),
+        queryKey: ['admin', 'user', variables.userId, 'balances'],
       });
       invalidateReportQueries(queryClient);
       onClose();
@@ -152,6 +158,8 @@ export function AssignLeaveSlideOver({
   function handleYearChange(value: string): void {
     const parsed = Number.parseInt(value, 10);
     setYear(Number.isNaN(parsed) ? Number.NaN : parsed);
+    // Drop Year N prefill immediately so it cannot leak into Year N+1 while refetching.
+    setAllocations({});
     if (formError !== undefined) {
       setFormError(undefined);
     }

@@ -130,19 +130,31 @@ class UserController extends Controller
     }
 
     /**
-     * Retrieve a single user with team and complete current-year leave balances.
+     * Retrieve a single user with team and year-scoped leave balances.
      *
-     * Returns every active leave type initialized to 0.0, merged with the user's
-     * actual user_yearly_leave_records rows for the current calendar year so the
-     * Admin slide-over always renders a full balance sheet.
+     * Returns every active quota leave type initialized to 0.0, merged with the
+     * user's actual user_yearly_leave_records rows for the requested calendar
+     * year so the Admin Assign Leave slide-over always renders a full sheet.
+     *
+     * Query: ?year=2027 — optional; defaults to the current calendar year.
      */
-    public function show(User $user): JsonResponse
+    public function show(Request $request, User $user): JsonResponse
     {
         // Route-model binding resolves User or returns 404 before this method executes.
         $user->load('team');
 
-        $currentYear = (int) now()->year;
-        $leaveBalances = $this->buildCurrentYearLeaveBalances($user, $currentYear);
+        $year = $request->has('year')
+            ? $request->integer('year')
+            : (int) now()->year;
+
+        if ($year < 2000 || $year > 2100) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The year must be between 2000 and 2100.',
+            ], 422);
+        }
+
+        $leaveBalances = $this->buildCurrentYearLeaveBalances($user, $year);
 
         $payload = $user->toArray();
         $payload['yearly_leave_records'] = $leaveBalances;

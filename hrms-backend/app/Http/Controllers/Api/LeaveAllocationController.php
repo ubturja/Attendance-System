@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\IndexLeaveAllocationRequest;
 use App\Http\Requests\Admin\UpdateLeaveAllocationRequest;
 use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -121,9 +122,13 @@ class LeaveAllocationController extends Controller
     /**
      * Bulk upsert assigned_days for a user's leave balance rows in a calendar year.
      *
-     * Route model binding resolves {user} → User. Uses updateOrCreate on the composite key
-     * (user_id, leave_type_id, year) so mid-year leave type additions succeed without a
-     * pre-existing row — common when Admin adds a new leave category after user provisioning.
+     * Route model binding resolves {user} → User. Each row is locked with
+     * lockForUpdate() inside a single DB transaction so concurrent attendance
+     * deductions cannot race the taken_days vs assigned_days guard.
+     *
+     * Missing rows are created on the composite key (user_id, leave_type_id, year)
+     * so mid-year leave type additions succeed without a pre-existing row — common
+     * when Admin adds a new leave category after user provisioning.
      *
      * UpdateLeaveAllocationRequest validates year and an allocations[] of leave_type_id +
      * assigned_days. Existing taken_days are preserved; remaining_days is computed via the
@@ -162,42 +167,44 @@ class LeaveAllocationController extends Controller
         /** @var list<array{leave_type_id: int, assigned_days: numeric-string|float|int}> $allocations */
         $allocations = $validated['allocations'];
 
-        // Pre-flight: reject any quota reduction that would leave taken_days above assigned_days.
-        foreach ($allocations as $allocation) {
-            $leaveTypeId = (int) $allocation['leave_type_id'];
-            $assignedDays = (float) $allocation['assigned_days'];
-
-            $existing = UserYearlyLeaveRecord::query()
-                ->where('user_id', $user->id)
-                ->where('leave_type_id', $leaveTypeId)
-                ->where('year', $year)
-                ->first();
-
-            $takenDays = (float) ($existing?->taken_days ?? 0);
-
-            if ($takenDays > $assignedDays) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'taken_days cannot exceed assigned_days.',
-                ], 422);
-            }
-        }
-
-        // Atomic bulk upsert — only assigned_days is written; taken_days stays untouched.
+        // Pessimistic lock: validate + write under one transaction so concurrent
+        // attendance deductions cannot drift taken_days vs assigned_days mid-update.
         $records = DB::transaction(function () use ($user, $year, $allocations): array {
             $updated = [];
 
             foreach ($allocations as $allocation) {
-                $record = UserYearlyLeaveRecord::query()->updateOrCreate(
-                    [
+                $leaveTypeId = (int) $allocation['leave_type_id'];
+                $assignedDays = (float) $allocation['assigned_days'];
+
+                $record = UserYearlyLeaveRecord::query()
+                    ->where('user_id', $user->id)
+                    ->where('leave_type_id', $leaveTypeId)
+                    ->where('year', $year)
+                    ->lockForUpdate()
+                    ->first();
+
+                $takenDays = (float) ($record?->taken_days ?? 0);
+
+                if ($takenDays > $assignedDays) {
+                    throw new HttpResponseException(response()->json([
+                        'success' => false,
+                        'message' => 'taken_days cannot exceed assigned_days.',
+                    ], 422));
+                }
+
+                if ($record === null) {
+                    $record = UserYearlyLeaveRecord::query()->create([
                         'user_id' => $user->id,
-                        'leave_type_id' => (int) $allocation['leave_type_id'],
+                        'leave_type_id' => $leaveTypeId,
                         'year' => $year,
-                    ],
-                    [
-                        'assigned_days' => (float) $allocation['assigned_days'],
-                    ]
-                );
+                        'assigned_days' => $assignedDays,
+                        'taken_days' => 0,
+                    ]);
+                } else {
+                    // Only assigned_days is written; taken_days stays untouched.
+                    $record->assigned_days = $assignedDays;
+                    $record->save();
+                }
 
                 // remaining_days is computed by the model accessor from assigned_days − taken_days.
                 $record->load('leaveType');

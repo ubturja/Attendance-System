@@ -12,9 +12,10 @@ export const queryKeys = {
     admin: ['admin', 'users'] as const,
     list: (isArchived: boolean, search: string) =>
       ['admin', 'users', 'list', isArchived ? 'archived' : 'current', search] as const,
-    /** Prefix for all per-user admin balance queries. */
+    /** Broad prefix for all per-user admin balance queries (any user/year). */
     balancesRoot: ['admin', 'user'] as const,
-    balances: (userId: number) => ['admin', 'user', userId, 'balances'] as const,
+    balances: (userId: number, year: number) =>
+      ['admin', 'user', userId, 'balances', year] as const,
   },
   teams: {
     admin: ['admin', 'teams'] as const,

@@ -288,53 +288,51 @@ export function AssignLeaveSlideOver({
             <p className="text-sm text-slate-500">No active leave types found.</p>
           ) : null}
 
-          <div className="overflow-hidden rounded-lg border border-slate-200">
-            <div className="divide-y divide-slate-200">
-              {leaveBalanceRows.map((record) => {
-                const leaveTypeId = record.leave_type_id;
-                const leaveName =
-                  record.leave_type?.name ??
-                  record.leave_type?.leave_type_code ??
-                  '—';
-                const leaveCode = record.leave_type?.leave_type_code;
-                const inputId = `allocation-days-${leaveTypeId}`;
-                const value = allocations[leaveTypeId] ?? '';
-                const rowKey = record.id ?? leaveTypeId;
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {leaveBalanceRows.map((record) => {
+              const leaveTypeId = record.leave_type_id;
+              const leaveName =
+                record.leave_type?.name ??
+                record.leave_type?.leave_type_code ??
+                '—';
+              const leaveCode = record.leave_type?.leave_type_code;
+              const inputId = `allocation-days-${leaveTypeId}`;
+              const value = allocations[leaveTypeId] ?? '';
+              const rowKey = record.id ?? leaveTypeId;
 
-                return (
-                  <div
-                    key={rowKey}
-                    className="flex items-center gap-4 bg-white px-4 py-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <label
-                        htmlFor={inputId}
-                        className="block text-sm font-medium text-slate-900"
-                      >
-                        {leaveName}
-                      </label>
-                      {leaveCode !== undefined ? (
-                        <p className="mt-0.5 text-xs text-slate-500">{leaveCode}</p>
-                      ) : null}
-                    </div>
-                    <div className="w-28 shrink-0">
-                      <Input
-                        id={inputId}
-                        type="number"
-                        min={0}
-                        step={1}
-                        aria-label={`Assigned days for ${leaveName}`}
-                        value={value}
-                        disabled={isAssigning || isFormLoading}
-                        onChange={(event) =>
-                          handleAllocationChange(leaveTypeId, event.target.value)
-                        }
-                      />
-                    </div>
+              return (
+                <div
+                  key={rowKey}
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <label
+                      htmlFor={inputId}
+                      className="block truncate text-sm font-medium text-slate-900"
+                    >
+                      {leaveName}
+                    </label>
+                    {leaveCode !== undefined ? (
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{leaveCode}</p>
+                    ) : null}
                   </div>
-                );
-              })}
-            </div>
+                  <div className="w-24 shrink-0 sm:w-28">
+                    <Input
+                      id={inputId}
+                      type="number"
+                      min={0}
+                      step={1}
+                      aria-label={`Assigned days for ${leaveName}`}
+                      value={value}
+                      disabled={isAssigning || isFormLoading}
+                      onChange={(event) =>
+                        handleAllocationChange(leaveTypeId, event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

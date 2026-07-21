@@ -112,14 +112,14 @@ export function LeaveBalanceSlideOver({
         ) : null}
 
         {!isLoading && !isError && user !== undefined ? (
-          <div className="overflow-hidden rounded-lg border border-slate-200">
-            <Table>
+          <div className="w-full overflow-hidden rounded-lg border border-slate-200">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead className="text-right">Assigned</TableHead>
-                  <TableHead className="text-right">Taken</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
+                  <TableHead className="px-6 py-4">Leave Type</TableHead>
+                  <TableHead className="px-6 py-4 text-right">Assigned</TableHead>
+                  <TableHead className="px-6 py-4 text-right">Taken</TableHead>
+                  <TableHead className="px-6 py-4 text-right">Remaining</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -138,7 +138,7 @@ export function LeaveBalanceSlideOver({
 
                   return (
                     <TableRow key={rowKey}>
-                      <TableCell>
+                      <TableCell className="px-6 py-4">
                         <div className="min-w-0">
                           <p className="font-medium text-slate-900">{leaveName}</p>
                           <p className="mt-0.5 text-xs text-slate-500">
@@ -147,13 +147,13 @@ export function LeaveBalanceSlideOver({
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-slate-700">
+                      <TableCell className="px-6 py-4 text-right tabular-nums text-slate-700">
                         {formatDays(record.assigned_days)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-slate-700">
+                      <TableCell className="px-6 py-4 text-right tabular-nums text-slate-700">
                         {formatDays(record.taken_days)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums text-slate-900">
+                      <TableCell className="px-6 py-4 text-right font-semibold tabular-nums text-slate-900">
                         {formatDays(record.remaining_days)}
                       </TableCell>
                     </TableRow>

@@ -59,7 +59,7 @@ export function SlideOver({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
-        className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-xl"
+        className="relative z-10 flex h-full w-full max-w-3xl flex-col border-l border-slate-200 bg-white shadow-xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
           <div className="min-w-0 pr-2">

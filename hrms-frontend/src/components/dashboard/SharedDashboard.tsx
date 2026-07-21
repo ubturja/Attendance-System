@@ -107,8 +107,6 @@ interface AttendanceLogRecord {
   leave_type_id: number | null;
 }
 
-const DEFAULT_ATTENDANCE_CODE = 'O';
-
 function formatBalanceDays(value: number): string {
   return Number(value).toFixed(1);
 }
@@ -131,7 +129,7 @@ function resolveMemberAttendanceCode(member: ProfileTeamMember): string {
   const log = member.attendance_logs?.[0];
 
   if (log === undefined) {
-    return DEFAULT_ATTENDANCE_CODE;
+    return '';
   }
 
   const submitted = log.submitted_code?.trim();
@@ -144,7 +142,7 @@ function resolveMemberAttendanceCode(member: ProfileTeamMember): string {
     return leaveCode.toUpperCase();
   }
 
-  return DEFAULT_ATTENDANCE_CODE;
+  return '';
 }
 
 async function fetchActiveLeaveTypes(): Promise<LeaveTypeRecord[]> {
@@ -314,7 +312,16 @@ export function SharedDashboard() {
   const isPageError = leaveTypesQuery.isError || profileQuery.isError;
   const isSubmitting = submitAttendanceMutation.isPending;
   const areLeaveTypesLoading = leaveTypesQuery.isLoading;
-  const canSubmitAttendance = isViewingToday && !isPageLoading && !isPageError && teamMembers.length > 0;
+  const hasAnySelection = teamMembers.some((member) => {
+    const code = selections[member.id];
+    return code !== undefined && code !== '';
+  });
+  const canSubmitAttendance =
+    isViewingToday &&
+    !isPageLoading &&
+    !isPageError &&
+    teamMembers.length > 0 &&
+    hasAnySelection;
 
   function setSelectedDate(date: string): void {
     setSearchParams((previous) => {
@@ -349,11 +356,16 @@ export function SharedDashboard() {
       return;
     }
 
-    const records: AttendanceRecordPayload[] = teamMembers.map((member) => ({
-      user_id: member.id,
-      date: todayDate,
-      code: selections[member.id] ?? DEFAULT_ATTENDANCE_CODE,
-    }));
+    const records: AttendanceRecordPayload[] = teamMembers
+      .filter((member) => {
+        const code = selections[member.id];
+        return code !== undefined && code !== '';
+      })
+      .map((member) => ({
+        user_id: member.id,
+        date: todayDate,
+        code: selections[member.id],
+      }));
 
     submitAttendanceMutation.mutate({ records });
   }
@@ -506,11 +518,14 @@ export function SharedDashboard() {
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                           'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
                         )}
-                        value={selections[member.id] ?? DEFAULT_ATTENDANCE_CODE}
+                        value={selections[member.id] ?? ''}
                         onChange={(event) => handleCodeChange(member.id, event.target.value)}
                         disabled={isNotToday || isSubmitting || areLeaveTypesLoading}
                         aria-label={`Attendance code for ${member.name}`}
                       >
+                        <option value="" disabled hidden>
+                          Mark Attendance
+                        </option>
                         {attendanceOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}

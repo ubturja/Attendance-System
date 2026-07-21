@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useEffect, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
@@ -20,6 +21,9 @@ import { AuthGateFallback } from './AuthGateFallback';
 export type UserRole = SessionUserRole;
 
 export { USER_ROLE_STORAGE_KEY };
+
+/** HTTP statuses that mean the Sanctum session is truly invalid — clear local auth. */
+const SESSION_INVALID_STATUSES = new Set([401, 419]);
 
 export interface ProtectedRouteProps {
   children: ReactNode;
@@ -53,6 +57,25 @@ export function resolveUnauthorizedRedirect(userRole: UserRole): string {
   return LOGIN_PATH;
 }
 
+function getHttpStatus(error: unknown): number | undefined {
+  if (!isAxiosError(error)) {
+    return undefined;
+  }
+
+  return error.response?.status;
+}
+
+/** Retry transient network / 5xx failures; never retry definitive auth failures. */
+function shouldRetrySessionFetch(failureCount: number, error: unknown): boolean {
+  const status = getHttpStatus(error);
+
+  if (status !== undefined && SESSION_INVALID_STATUSES.has(status)) {
+    return false;
+  }
+
+  return failureCount < 2;
+}
+
 export function ProtectedRoute({
   children,
   allowedRoles,
@@ -65,7 +88,7 @@ export function ProtectedRoute({
     queryKey: queryKeys.profile,
     queryFn: fetchSessionProfile,
     enabled: token !== null,
-    retry: false,
+    retry: shouldRetrySessionFetch,
     staleTime: 60_000,
   });
 
@@ -78,8 +101,19 @@ export function ProtectedRoute({
   }
 
   if (sessionQuery.isError || sessionQuery.data === undefined) {
-    clearAuthSession();
-    return <Navigate to={unauthenticatedRedirect} replace />;
+    const status = getHttpStatus(sessionQuery.error);
+
+    // Only nuke the session on real auth/CSRF failures — not 5xx or offline blips.
+    if (status !== undefined && SESSION_INVALID_STATUSES.has(status)) {
+      clearAuthSession();
+      return <Navigate to={unauthenticatedRedirect} replace />;
+    }
+
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100">
+        <div className="text-red-500">Network error. Please refresh the page.</div>
+      </div>
+    );
   }
 
   const verifiedRole = sessionQuery.data.job_title;

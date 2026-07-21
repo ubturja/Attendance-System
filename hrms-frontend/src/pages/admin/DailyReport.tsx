@@ -19,7 +19,7 @@ import {
   type LeaveTypeOptionSource,
 } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
-import { invalidateReportQueries, queryKeys } from '../../lib/queryKeys';
+import { invalidateAttendanceRelatedQueries, queryKeys } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -252,8 +252,7 @@ export default function DailyReport() {
       setOverrideError(undefined);
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['reports', 'daily'] });
-      invalidateReportQueries(queryClient);
+      invalidateAttendanceRelatedQueries(queryClient);
     },
     onError: (error) => {
       setOverrideError(

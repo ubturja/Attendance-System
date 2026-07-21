@@ -12,7 +12,10 @@ export const queryKeys = {
     admin: ['admin', 'users'] as const,
     list: (isArchived: boolean, search: string) =>
       ['admin', 'users', 'list', isArchived ? 'archived' : 'current', search] as const,
-    balances: (userId: number) => ['admin', 'user', userId, 'balances'] as const,
+    /** Broad prefix for all per-user admin balance queries (any user/year). */
+    balancesRoot: ['admin', 'user'] as const,
+    balances: (userId: number, year: number) =>
+      ['admin', 'user', userId, 'balances', year] as const,
   },
   teams: {
     admin: ['admin', 'teams'] as const,
@@ -43,4 +46,16 @@ export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
 /** Refetch yearly (and related) report matrices after balance or attendance changes. */
 export function invalidateReportQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+}
+
+/**
+ * Refetch profiles, admin leave balances, and reports after attendance submission.
+ * Invalidating `profile` also covers date-scoped `profileByDate` queries.
+ */
+export function invalidateAttendanceRelatedQueries(queryClient: QueryClient): void {
+  invalidateReportQueries(queryClient);
+  // Base profile (shell balances) and date-scoped dashboard roster
+  void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+  // Admin Leave Balance views for any user/year
+  void queryClient.invalidateQueries({ queryKey: queryKeys.users.balancesRoot });
 }

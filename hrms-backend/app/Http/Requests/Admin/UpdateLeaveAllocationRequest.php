@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\Http\Requests\ApiFormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Validates Admin bulk assignment of yearly leave quotas for a user.
@@ -29,8 +30,14 @@ class UpdateLeaveAllocationRequest extends ApiFormRequest
             // One or more leave-type quotas to upsert for the bound user.
             'allocations' => ['required', 'array'],
 
-            // Target leave category for each allocation row.
-            'allocations.*.leave_type_id' => ['required', 'integer', 'exists:leave_types,id'],
+            // Target leave category — must be an existing quota-based leave type.
+            'allocations.*.leave_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('leave_types', 'id')->where(function ($query) {
+                    return $query->where('is_quota_based', true);
+                }),
+            ],
 
             // Admin-assigned yearly quota — whole days only (half-day usage is deducted via taken_days).
             'allocations.*.assigned_days' => ['required', 'integer', 'min:0'],

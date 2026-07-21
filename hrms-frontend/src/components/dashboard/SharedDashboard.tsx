@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays, Loader2, Wallet } from 'lucide-react';
 import { Alert } from '../ui/Alert';
@@ -18,7 +18,7 @@ import { TableErrorRow } from '../ui/TableErrorRow';
 import api from '../../lib/api';
 import { buildAttendanceOptions } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
-import { invalidateReportQueries, queryKeys } from '../../lib/queryKeys';
+import { invalidateAttendanceRelatedQueries, queryKeys } from '../../lib/queryKeys';
 import { cn } from '../../lib/utils';
 
 interface ApiSuccessResponse<T> {
@@ -231,8 +231,10 @@ export function SharedDashboard() {
   const isNotToday = !isViewingToday;
 
   const [selections, setSelections] = useState<Record<number, string>>({});
+  const [selectionsDirty, setSelectionsDirty] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [submitSuccess, setSubmitSuccess] = useState<string | undefined>();
+  const lastSeededDateRef = useRef<string | null>(null);
 
   const leaveTypesQuery = useQuery({
     queryKey: queryKeys.leaveTypes.active,
@@ -243,6 +245,8 @@ export function SharedDashboard() {
   const profileQuery = useQuery({
     queryKey: queryKeys.profileByDate(selectedDate),
     queryFn: () => fetchProfile(selectedDate),
+    // Roster rarely changes mid-session; avoid focus refetch wiping local dropdown edits.
+    refetchOnWindowFocus: false,
   });
 
   const teamMembers = profileQuery.data?.team?.users ?? [];
@@ -263,21 +267,34 @@ export function SharedDashboard() {
 
   const isProfileLoading = profileQuery.isLoading;
 
+  // Seed from the server roster on first load / date change only — never overwrite dirty edits.
   useEffect(() => {
     if (teamMembers.length === 0) {
       return;
     }
 
+    const dateChanged = lastSeededDateRef.current !== selectedDate;
+
+    if (!dateChanged && selectionsDirty) {
+      return;
+    }
+
     setSelections(createSelectionsFromMembers(teamMembers));
-  }, [teamMembers, selectedDate]);
+    lastSeededDateRef.current = selectedDate;
+
+    if (dateChanged) {
+      setSelectionsDirty(false);
+    }
+  }, [teamMembers, selectedDate, selectionsDirty]);
 
   const submitAttendanceMutation = useMutation({
     mutationFn: submitAttendance,
     onSuccess: () => {
       setSubmitSuccess('Attendance submitted successfully.');
       setSubmitError(undefined);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.profileByDate(selectedDate) });
-      invalidateReportQueries(queryClient);
+      // Allow reseed from the refreshed server snapshot after a successful save.
+      setSelectionsDirty(false);
+      invalidateAttendanceRelatedQueries(queryClient);
     },
     onError: (error) => {
       setSubmitSuccess(undefined);
@@ -306,6 +323,7 @@ export function SharedDashboard() {
   }
 
   function handleCodeChange(memberId: number, value: string) {
+    setSelectionsDirty(true);
     setSelections((previousSelections) => ({ ...previousSelections, [memberId]: value }));
     setSubmitError(undefined);
     setSubmitSuccess(undefined);

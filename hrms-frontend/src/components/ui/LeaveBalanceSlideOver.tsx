@@ -48,9 +48,13 @@ export interface LeaveBalanceSlideOverProps {
   userId: number | null;
 }
 
-async function fetchUserLeaveBalances(userId: number): Promise<UserBalancePayload> {
+async function fetchUserLeaveBalances(
+  userId: number,
+  year: number,
+): Promise<UserBalancePayload> {
   const response = await api.get<ApiSuccessResponse<UserBalancePayload>>(
     `/admin/users/${userId}`,
+    { params: { year } },
   );
   return response.data.data;
 }
@@ -59,19 +63,24 @@ function formatDays(value: number): string {
   return value.toFixed(1);
 }
 
+function getCurrentYear(): number {
+  return new Date().getFullYear();
+}
+
 export function LeaveBalanceSlideOver({
   isOpen,
   onClose,
   userId,
 }: LeaveBalanceSlideOverProps) {
+  const year = getCurrentYear();
   const {
     data: user,
     isLoading,
     isError,
     isFetching,
   } = useQuery({
-    queryKey: queryKeys.users.balances(userId as number),
-    queryFn: () => fetchUserLeaveBalances(userId as number),
+    queryKey: queryKeys.users.balances(userId as number, year),
+    queryFn: () => fetchUserLeaveBalances(userId as number, year),
     enabled: isOpen && userId !== null,
   });
 

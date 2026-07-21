@@ -21,11 +21,10 @@ use Illuminate\Support\Collection;
  * Secured at the route layer via auth:sanctum + role:Admin middleware.
  * All endpoints strictly eager-load relationships via with() to prevent N+1 queries.
  *
- * Roster-first: Yearly / Monthly / Daily start from User::query() (optionally filtered
- * by current team_id OR period-scoped attendance_logs.team_id snapshots). Leave and
- * attendance data are appended; users are never dropped solely because they lack leave
- * rows or attendance logs for the selected period. Displayed team_name prefers the
- * historical attendance snapshot over the user's current membership.
+ * Team filters prefer attendance_logs.team_id (snapshotted at log time) over the
+ * user's current users.team_id so transfers do not bleed days across team reports.
+ * Roster rows may still include current members; displayed codes/totals only count
+ * logs whose team_id matches the requested team.
  */
 class ReportController extends Controller
 {
@@ -51,7 +50,8 @@ class ReportController extends Controller
             ->with([
                 'team',
                 // Date-scoped attendance for this report day (0–1 row per user).
-                'attendanceLogs' => static function ($query) use ($resolvedDate): void {
+                // When team_id is set, only the snapshotted team row is loaded.
+                'attendanceLogs' => static function ($query) use ($resolvedDate, $teamId): void {
                     $query
                         ->whereDate('date', $resolvedDate)
                         ->with([
@@ -59,6 +59,10 @@ class ReportController extends Controller
                             'team' => fn ($teamQuery) => $teamQuery->withTrashed(),
                             'editor',
                         ]);
+
+                    if ($teamId !== null && $teamId !== '') {
+                        $query->where('team_id', $teamId);
+                    }
                 },
             ]);
 
@@ -137,7 +141,8 @@ class ReportController extends Controller
     /**
      * Monthly report — user × day-of-month attendance matrix for a calendar grid.
      *
-     * Roster-first: every active user (optionally filtered by team) appears as a row.
+     * Roster-first: every user including soft-deleted/archived (optionally filtered by
+     * team) appears as a row so historical payroll audits stay complete.
      * Month-scoped attendanceLogs are eager-loaded into `daily_records` (day → code);
      * empty logs yield zero totals / blank days.
      *
@@ -158,10 +163,12 @@ class ReportController extends Controller
         $daysInMonth = $periodStart->daysInMonth;
 
         $usersQuery = User::query()
-            ->where('is_active', true)
+            ->withTrashed()
             ->with([
                 'team',
-                'attendanceLogs' => static function ($query) use ($year, $month): void {
+                // Month-scoped logs. Team filters bind to attendance_logs.team_id so
+                // days logged on another team never appear in this team's matrix.
+                'attendanceLogs' => static function ($query) use ($year, $month, $teamId): void {
                     $query
                         ->whereYear('date', $year)
                         ->whereMonth('date', $month)
@@ -170,6 +177,10 @@ class ReportController extends Controller
                             'leaveType' => static fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed(),
                             'team' => static fn ($teamQuery) => $teamQuery->withTrashed(),
                         ]);
+
+                    if ($teamId !== null && $teamId !== '') {
+                        $query->where('team_id', $teamId);
+                    }
                 },
             ]);
 
@@ -256,7 +267,8 @@ class ReportController extends Controller
     /**
      * Yearly report — flattened leave balance pivot per user (Excel-style).
      *
-     * Roster-first: every active user (optionally filtered by team) appears as a row.
+     * Roster-first: every user including soft-deleted/archived (optionally filtered by
+     * team) appears as a row so historical payroll audits stay complete.
      * Year-scoped leave balances are eager-loaded and default to 0.0 when absent —
      * users are never dropped simply because they lack leave allocation rows.
      *
@@ -275,6 +287,7 @@ class ReportController extends Controller
             ->get();
 
         $usersQuery = User::query()
+            ->withTrashed()
             ->with([
                 'team',
                 'yearlyLeaveRecords' => static function ($query) use ($year): void {
@@ -282,7 +295,9 @@ class ReportController extends Controller
                         ->where('year', $year)
                         ->with(['leaveType' => static fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed()]);
                 },
-                'attendanceLogs' => static function ($query) use ($year): void {
+                // Year-scoped logs. Team filters bind to attendance_logs.team_id so
+                // O/W totals (and historical team_name) stay with the snapshotted team.
+                'attendanceLogs' => static function ($query) use ($year, $teamId): void {
                     $query
                         ->whereYear('date', $year)
                         ->orderBy('date')
@@ -290,9 +305,12 @@ class ReportController extends Controller
                             'leaveType' => static fn ($leaveTypeQuery) => $leaveTypeQuery->withTrashed(),
                             'team' => static fn ($teamQuery) => $teamQuery->withTrashed(),
                         ]);
+
+                    if ($teamId !== null && $teamId !== '') {
+                        $query->where('team_id', $teamId);
+                    }
                 },
-            ])
-            ->where('is_active', true);
+            ]);
 
         if ($teamId !== null && $teamId !== '') {
             $usersQuery->where(function ($query) use ($teamId, $periodStart, $periodEnd): void {

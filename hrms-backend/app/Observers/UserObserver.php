@@ -85,14 +85,27 @@ class UserObserver
     /**
      * Handle the User "deleted" event (soft-delete / offboarding).
      *
-     * Close every open membership window so archived team history does not
-     * treat the offboarded user as an active member, and revoke all Sanctum
-     * tokens so the offboarded user cannot keep using existing sessions.
+     * 1. Close every open membership window so archived team history does not
+     *    treat the offboarded user as an active member.
+     * 2. Revoke all Sanctum tokens so existing sessions die immediately.
+     * 3. Release the unique email lock and detach team_id so HR can provision a
+     *    rehire on the original address without colliding with this ghost row.
      */
     public function deleted(User $user): void
     {
         $this->closeOpenMembershipWindows($user);
         $user->tokens()->delete();
+
+        // Free the unique email constraint for rehires (varchar 191 safe).
+        $emailPrefix = time().'_deleted_';
+        $maxOriginalLength = max(0, 191 - strlen($emailPrefix));
+        $user->email = $emailPrefix.substr($user->email, 0, $maxOriginalLength);
+
+        // Drop active roster membership — archived users must not linger on teams.
+        $user->team_id = null;
+
+        // Avoid re-entering updated()/deleted() observer chains mid-cleanup.
+        $user->saveQuietly();
     }
 
     /**

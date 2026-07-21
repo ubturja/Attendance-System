@@ -252,6 +252,9 @@ export function SharedDashboard() {
   const teamMembers = profileQuery.data?.team?.users ?? [];
   const teamName = profileQuery.data?.team?.team_name ?? 'your team';
   const currentUserId = profileQuery.data?.id;
+  const hasExistingAttendance = teamMembers.some(
+    (member) => (member.attendance_logs?.length ?? 0) > 0,
+  );
 
   const attendanceOptions = useMemo(
     () => buildAttendanceOptions(leaveTypesQuery.data ?? []),
@@ -290,10 +293,15 @@ export function SharedDashboard() {
   const submitAttendanceMutation = useMutation({
     mutationFn: submitAttendance,
     onSuccess: () => {
-      setSubmitSuccess('Attendance submitted successfully.');
+      setSubmitSuccess(
+        hasExistingAttendance
+          ? 'Attendance updated successfully.'
+          : 'Attendance submitted successfully.',
+      );
       setSubmitError(undefined);
       // Allow reseed from the refreshed server snapshot after a successful save.
       setSelectionsDirty(false);
+      // Refresh dashboard balances/attendance, all reports, and admin leave grids.
       invalidateAttendanceRelatedQueries(queryClient);
     },
     onError: (error) => {
@@ -526,10 +534,14 @@ export function SharedDashboard() {
             disabled={isNotToday || !canSubmitAttendance || isSubmitting}
           >
             {isSubmitting
-              ? 'Submitting...'
+              ? hasExistingAttendance
+                ? 'Updating...'
+                : 'Submitting...'
               : isNotToday
                 ? 'Past Attendance is Read-Only'
-                : 'Submit Attendance'}
+                : hasExistingAttendance
+                  ? 'Update Attendance'
+                  : 'Submit Attendance'}
           </Button>
         </div>
       </form>

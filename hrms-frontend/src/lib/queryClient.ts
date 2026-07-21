@@ -5,7 +5,8 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
+      // Pick up attendance/balance changes when switching back to a report or dashboard tab.
+      refetchOnWindowFocus: true,
     },
   },
 });

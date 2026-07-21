@@ -41,6 +41,16 @@ class AttendanceVariantMapper
         'OS' => 'S',
     ];
 
+    /**
+     * Frontend base codes that are intentionally absent from leave_types.
+     *
+     * These persist a NULL leave_type_id. Catalogued non-quota types (e.g. W) are
+     * NOT listed here — they resolve via leave_types.is_quota_based instead.
+     *
+     * @var list<string>
+     */
+    private const UNCATALOGUED_CODES = ['O', 'X'];
+
     /** Full-day leave consumption amount (DECIMAL 8,2 compatible). */
     private const FULL_DAY_DEDUCTION = 1.0;
 
@@ -53,14 +63,27 @@ class AttendanceVariantMapper
     /**
      * Resolve a submitted frontend code into persistence and deduction instructions.
      *
-     * @throws AttendanceValidationException When a half-day variant's parent leave type is missing.
+     * @throws AttendanceValidationException When the code is unknown or a half-day parent is missing.
      */
     public function map(string $submittedCode): MappedAttendanceCode
     {
         $code = strtoupper(trim($submittedCode));
+
+        // ── Step 1: Uncatalogued presence / off codes (O, X) ─────────────────
+        // Not leave_types rows — NULL FK, no ledger interaction.
+        if (in_array($code, self::UNCATALOGUED_CODES, true)) {
+            return new MappedAttendanceCode(
+                leaveTypeId: null,
+                balanceLeaveTypeId: null,
+                deductionAmount: 0.0,
+                requiresBalanceCheck: false,
+                submittedCode: $code,
+            );
+        }
+
         $leaveTypes = $this->leaveTypesByCode();
 
-        // ── Step 1: Half-day variants (AO, OA, NO, ON, SO, OS) ────────────────
+        // ── Step 2: Half-day variants (AO, OA, NO, ON, SO, OS) ────────────────
         // Map to PARENT code and apply 0.5-day deduction when the parent is quota-based.
         if (array_key_exists($code, self::VARIANT_TO_PARENT)) {
             $parentCode = self::VARIANT_TO_PARENT[$code];
@@ -84,11 +107,16 @@ class AttendanceVariantMapper
             );
         }
 
-        // ── Step 2: Standard codes — resolve LeaveType and honour is_quota_based ─
+        // ── Step 3: Standard codes — resolve LeaveType and honour is_quota_based ─
         /** @var LeaveType|null $leaveType */
         $leaveType = $leaveTypes->get($code);
-        $requiresBalanceCheck = $leaveType ? (bool) $leaveType->is_quota_based : false;
-        $leaveTypeId = $leaveType !== null ? (int) $leaveType->id : null;
+
+        if ($leaveType === null) {
+            throw AttendanceValidationException::unknownAttendanceCode($code);
+        }
+
+        $requiresBalanceCheck = (bool) $leaveType->is_quota_based;
+        $leaveTypeId = (int) $leaveType->id;
 
         return new MappedAttendanceCode(
             leaveTypeId: $leaveTypeId,

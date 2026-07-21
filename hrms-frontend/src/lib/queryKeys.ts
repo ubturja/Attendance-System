@@ -36,6 +36,9 @@ export const queryKeys = {
   },
 } as const;
 
+/** Live-refresh interval for open report grids (cross-session attendance updates). */
+export const REPORT_REFETCH_INTERVAL_MS = 3_000;
+
 /** Refetch admin catalog and employee attendance dropdown after leave type mutations. */
 export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.admin });
@@ -43,19 +46,18 @@ export function invalidateLeaveTypeQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.leaveTypes.allocation });
 }
 
-/** Refetch yearly (and related) report matrices after balance or attendance changes. */
-export function invalidateReportQueries(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
-}
-
 /**
- * Refetch profiles, admin leave balances, and reports after attendance submission.
- * Invalidating `profile` also covers date-scoped `profileByDate` queries.
+ * Invalidate every cache that depends on attendance or leave balances.
+ *
+ * Prefix matches cover profile (+ by-date), all reports, and admin user balances.
  */
 export function invalidateAttendanceRelatedQueries(queryClient: QueryClient): void {
-  invalidateReportQueries(queryClient);
-  // Base profile (shell balances) and date-scoped dashboard roster
   void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
-  // Admin Leave Balance views for any user/year
+  void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
   void queryClient.invalidateQueries({ queryKey: queryKeys.users.balancesRoot });
+}
+
+/** Alias used by leave-allocation and user mutations — same as {@link invalidateAttendanceRelatedQueries}. */
+export function invalidateReportQueries(queryClient: QueryClient): void {
+  invalidateAttendanceRelatedQueries(queryClient);
 }

@@ -220,7 +220,7 @@ class AttendanceController extends Controller
         $date = $record['date'];
         $newCode = strtoupper(trim($record['code']));
 
-        $this->assertUniqueInPayload($userId, $date, $seenAttendanceKeys);
+        $this->assertUniqueInBatch($userId, $date, $seenAttendanceKeys);
 
         $targetUser = User::query()->findOrFail($userId);
 
@@ -242,7 +242,6 @@ class AttendanceController extends Controller
                 existing: $existing,
                 newCode: $newCode,
                 userId: $userId,
-                teamId: (int) $targetUser->team_id,
                 year: $year,
                 date: $date,
                 pendingDeductions: $pendingDeductions,
@@ -347,7 +346,6 @@ class AttendanceController extends Controller
         AttendanceLog $existing,
         string $newCode,
         int $userId,
-        int $teamId,
         int $year,
         string $date,
         array &$pendingDeductions,
@@ -357,12 +355,6 @@ class AttendanceController extends Controller
         $oldCode = $this->resolveEffectiveCode($existing, $leaveTypeCodesById);
 
         if ($oldCode === $newCode) {
-            // Keep team_id aligned with the submitter's current membership on idempotent resubmits.
-            if ((int) $existing->team_id !== $teamId) {
-                $existing->team_id = $teamId;
-                $existing->save();
-            }
-
             return $existing;
         }
 
@@ -398,8 +390,6 @@ class AttendanceController extends Controller
 
         $existing->submitted_code = $newCode;
         $existing->leave_type_id = $newMapped->leaveTypeId;
-        // Re-snap team on update so same-day corrections stay with the employee's current team.
-        $existing->team_id = $teamId;
         $existing->save();
 
         return $existing;
@@ -665,13 +655,14 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Reject duplicate (user_id, date) rows within the same request payload.
+     * Reject duplicate (user_id, date) pairs within a single request payload.
+     * Existing DB rows for today are upserted — not rejected.
      *
      * @param  array<string, true>  $seenAttendanceKeys
      *
      * @throws AttendanceValidationException
      */
-    private function assertUniqueInPayload(
+    private function assertUniqueInBatch(
         int $userId,
         string $date,
         array &$seenAttendanceKeys,

@@ -207,6 +207,21 @@ export default function MonthlyReport() {
 
   const rows = report?.rows ?? [];
 
+  /** True when a past weekday has no attendance recorded (missing cell). */
+  function isMissedPastDay(day: number, cellValue: string | null): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // reportMonth is 1–12; Date months are 0-indexed
+    const cellDate = new Date(reportYear, reportMonth - 1, day);
+    const isPast = cellDate < today;
+    const isWeekday = cellDate.getDay() !== 0 && cellDate.getDay() !== 6;
+    const isMissing =
+      !cellValue || cellValue === '-' || cellValue === '—' || cellValue === '';
+
+    return isPast && isWeekday && isMissing;
+  }
+
   function updateSearchParams(updates: Record<string, string>): void {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -361,8 +376,8 @@ export default function MonthlyReport() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        {/* Table wraps content in overflow-x-auto for horizontal scroll on 31+ day columns */}
+      <div className="w-full min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Horizontal scroll on narrow viewports / 31+ day columns */}
         <Table className="min-w-max">
           <TableHeader>
             {/* Row 1: day names + summary labels */}
@@ -469,6 +484,7 @@ export default function MonthlyReport() {
                     {/* Day cells — same calendarDays array as the header */}
                     {calendarDays.map((day) => {
                       const code = getDailyCode(row.daily_records, day.date);
+                      const missed = isMissedPastDay(day.date, code);
 
                       return (
                         <TableCell
@@ -478,6 +494,7 @@ export default function MonthlyReport() {
                             getStatusColor(code),
                             isWeekend(day.dayName) && weekendBand,
                             isWeekend(day.dayName) && 'group-hover:bg-yellow-100/80',
+                            missed && 'bg-red-50 text-red-400',
                           )}
                         >
                           {code}

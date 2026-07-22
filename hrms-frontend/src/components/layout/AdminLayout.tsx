@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Menu } from 'lucide-react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { profileInitials, useCurrentProfile } from '../../hooks/useCurrentProfile';
 import { Avatar } from '../ui/Avatar';
@@ -13,17 +14,19 @@ function ProfileTextSkeleton({ className }: { className?: string }) {
 export function AdminLayout() {
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+  );
   const { data: profile, isLoading } = useCurrentProfile();
 
   const displayName = profile?.name ?? '';
   const displayRole = profile?.job_title ?? '';
   const avatarInitials = profile !== undefined ? profileInitials(profile.name) : '';
 
-  // Shared with header + main so both expand/collapse in sync with the sidebar.
+  // Offset only from md up so mobile content is full-bleed (ml/pl 0).
   const sidebarOffsetClass = cn(
-    'transition-all duration-300 ease-in-out',
-    isSidebarOpen ? 'pl-64' : 'pl-20',
+    'transition-all duration-300 ease-in-out pl-0',
+    isSidebarOpen ? 'md:pl-64' : 'md:pl-20',
   );
 
   async function handleLogout() {
@@ -47,9 +50,19 @@ export function AdminLayout() {
         onLogout={handleLogout}
       />
 
-      <div className={cn('flex min-h-screen flex-col', sidebarOffsetClass)}>
-        <header className="sticky top-0 z-10 flex h-16 w-full items-center justify-end border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
-          <div className="flex shrink-0 items-center gap-3">
+      <div className={cn('flex min-h-screen min-w-0 flex-col', sidebarOffsetClass)}>
+        <header className="sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="rounded-md p-2 text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand md:hidden"
+            aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            aria-expanded={isSidebarOpen}
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </button>
+
+          <div className="ml-auto flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-slate-800">
                 {isLoading ? <ProfileTextSkeleton /> : displayName}
@@ -70,7 +83,7 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <main className="w-full flex-1 p-6">
+        <main className="w-full min-w-0 flex-1 p-6">
           <Outlet />
         </main>
       </div>

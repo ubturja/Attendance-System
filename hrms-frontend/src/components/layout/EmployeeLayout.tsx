@@ -101,7 +101,7 @@ export function EmployeeLayout() {
         </div>
       </aside>
 
-      <div className="pl-64">
+      <div className="min-w-0 pl-64">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
           <div>
             <p className="text-sm font-medium text-slate-800">Team Attendance</p>
@@ -131,7 +131,7 @@ export function EmployeeLayout() {
           </div>
         </header>
 
-        <main className="p-6">
+        <main className="min-w-0 p-6">
           <Outlet />
         </main>
       </div>

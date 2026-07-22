@@ -439,7 +439,7 @@ export function SharedDashboard() {
 
       <form
         onSubmit={handleSubmit}
-        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+        className="w-full min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       >
         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -479,7 +479,7 @@ export function SharedDashboard() {
           </Alert>
         ) : null}
 
-        <Table>
+        <Table className="min-w-max">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Team Member</TableHead>

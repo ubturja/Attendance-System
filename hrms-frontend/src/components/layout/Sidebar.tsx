@@ -48,122 +48,133 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   return (
-    <aside
-      className={cn(
-        'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out',
-        isOpen ? 'w-64' : 'w-20',
-      )}
-    >
-      <div
+    <>
+      <aside
         className={cn(
-          'flex h-16 items-center border-b border-slate-200',
-          isOpen ? 'gap-3 px-6' : 'justify-center px-2',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out',
+          isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+          isOpen ? 'w-64' : 'w-64 md:w-20',
         )}
       >
-        <img
-          src="/logo.png"
-          alt="MTS Logo"
-          className="h-10 w-10 shrink-0 rounded-full object-contain"
-        />
         <div
           className={cn(
-            'min-w-0 whitespace-nowrap transition-opacity duration-300',
-            isOpen ? 'opacity-100' : 'hidden opacity-0',
+            'flex h-16 items-center border-b border-slate-200',
+            isOpen ? 'gap-3 px-6' : 'justify-center px-2',
           )}
         >
-          <p className="truncate text-sm font-semibold text-slate-800">MTS Attendance</p>
-          <p className="truncate text-xs text-slate-500">Admin Console</p>
+          <img
+            src="/logo.png"
+            alt="MTS Logo"
+            className="h-10 w-10 shrink-0 rounded-full object-contain"
+          />
+          <div
+            className={cn(
+              'min-w-0 whitespace-nowrap transition-opacity duration-300',
+              isOpen ? 'opacity-100' : 'hidden opacity-0',
+            )}
+          >
+            <p className="truncate text-sm font-semibold text-slate-800">MTS Attendance</p>
+            <p className="truncate text-xs text-slate-500">Admin Console</p>
+          </div>
         </div>
-      </div>
 
-      <div className={cn('border-b border-slate-200', isOpen ? 'px-3 py-2' : 'px-2 py-2')}>
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className={cn(
-            'flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-            isOpen ? 'justify-end' : 'justify-center',
-          )}
-          aria-label={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          aria-expanded={isOpen}
-        >
-          {isOpen ? (
-            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-        </button>
-      </div>
+        <div className={cn('border-b border-slate-200', isOpen ? 'px-3 py-2' : 'px-2 py-2')}>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className={cn(
+              'flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+              isOpen ? 'justify-end' : 'justify-center',
+            )}
+            aria-label={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? (
+              <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
+          </button>
+        </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Admin navigation">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.to + item.label}
-              to={item.to}
-              end={item.to !== '/admin/reports'}
-              title={isOpen ? undefined : item.label}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors',
-                  isOpen ? '' : 'justify-center',
-                  isActive
-                    ? 'border-r-4 border-brand bg-brand-50 font-semibold text-brand'
-                    : 'rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand',
-                )
-              }
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span
-                className={cn(
-                  'whitespace-nowrap transition-opacity duration-300',
-                  isOpen ? 'opacity-100' : 'hidden opacity-0',
-                )}
+        <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Admin navigation">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to + item.label}
+                to={item.to}
+                end={item.to !== '/admin/reports'}
+                title={isOpen ? undefined : item.label}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors',
+                    isOpen ? '' : 'justify-center',
+                    isActive
+                      ? 'border-r-4 border-brand bg-brand-50 font-semibold text-brand'
+                      : 'rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand',
+                  )
+                }
               >
-                {item.label}
-              </span>
-            </NavLink>
-          );
-        })}
-      </nav>
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span
+                  className={cn(
+                    'whitespace-nowrap transition-opacity duration-300',
+                    isOpen ? 'opacity-100' : 'hidden opacity-0',
+                  )}
+                >
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
 
-      <div className={cn('border-t border-slate-200', isOpen ? 'p-4' : 'p-2')}>
-        <div
-          className={cn(
-            'whitespace-nowrap transition-opacity duration-300',
-            isOpen ? 'opacity-100' : 'hidden opacity-0',
-          )}
-        >
-          <p className="text-xs text-slate-500">Signed in as</p>
-          <p className="mt-0.5 truncate text-sm font-medium text-slate-800">
-            {isLoading ? <ProfileTextSkeleton /> : displayName}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'justify-start gap-2 px-2',
-            isOpen ? 'mt-3 w-full' : 'mx-auto mt-0 w-auto justify-center',
-          )}
-          onClick={onLogout}
-          disabled={isLoggingOut}
-          title={isLoggingOut ? 'Signing out...' : 'Sign out'}
-          aria-label={isLoggingOut ? 'Signing out...' : 'Sign out'}
-        >
-          <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span
+        <div className={cn('border-t border-slate-200', isOpen ? 'p-4' : 'p-2')}>
+          <div
             className={cn(
               'whitespace-nowrap transition-opacity duration-300',
               isOpen ? 'opacity-100' : 'hidden opacity-0',
             )}
           >
-            {isLoggingOut ? 'Signing out...' : 'Sign out'}
-          </span>
-        </Button>
-      </div>
-    </aside>
+            <p className="text-xs text-slate-500">Signed in as</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-slate-800">
+              {isLoading ? <ProfileTextSkeleton /> : displayName}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'justify-start gap-2 px-2',
+              isOpen ? 'mt-3 w-full' : 'mx-auto mt-0 w-auto justify-center',
+            )}
+            onClick={onLogout}
+            disabled={isLoggingOut}
+            title={isLoggingOut ? 'Signing out...' : 'Sign out'}
+            aria-label={isLoggingOut ? 'Signing out...' : 'Sign out'}
+          >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span
+              className={cn(
+                'whitespace-nowrap transition-opacity duration-300',
+                isOpen ? 'opacity-100' : 'hidden opacity-0',
+              )}
+            >
+              {isLoggingOut ? 'Signing out...' : 'Sign out'}
+            </span>
+          </Button>
+        </div>
+      </aside>
+
+      {isOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={toggleSidebar}
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
   );
 }

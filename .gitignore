@@ -80,3 +80,4 @@ hrms-backend/Homestead.yaml
 hrms-frontend/node_modules/
 hrms-frontend/dist/
 hrms-frontend/dist-ssr/
+node_modules

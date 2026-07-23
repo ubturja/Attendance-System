@@ -2,9 +2,10 @@ import { useMutation } from '@tanstack/react-query';
 import { Eye } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Alert } from '../../components/ui/Alert';
+import { InstallPWAButton } from '../../components/ui/InstallPWAButton';
 import api, {
   ADMIN_HOME_PATH,
   EMPLOYEE_DASHBOARD_PATH,
@@ -97,7 +98,10 @@ export default function Login() {
   const isPending = loginMutation.isPending;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white to-brand-50 px-4 py-12">
+    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-white to-brand-50 px-4 py-12">
+      <div className="absolute right-4 top-4 z-50 md:right-8 md:top-8">
+        <InstallPWAButton />
+      </div>
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-8 text-center">
           <img

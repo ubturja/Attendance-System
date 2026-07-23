@@ -4,6 +4,7 @@ import { LayoutDashboard, LogOut, UserRound } from 'lucide-react';
 import { profileInitials, useCurrentProfile } from '../../hooks/useCurrentProfile';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { APP_CONFIG } from '../../config/app';
 import { performLogout } from '../../lib/auth';
 import { cn } from '../../lib/utils';
 
@@ -53,7 +54,12 @@ export function EmployeeLayout() {
             className="h-10 w-10 shrink-0 rounded-full object-contain"
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-800">MTS Attendance</p>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-semibold text-slate-800">{APP_CONFIG.name}</p>
+              <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap text-brand-600">
+                {APP_CONFIG.version}
+              </span>
+            </div>
             <p className="truncate text-xs text-slate-500">Employee Portal</p>
           </div>
         </div>

@@ -6,14 +6,7 @@ export function ReloadPrompt() {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
-  } = useRegisterSW({
-    onRegistered() {
-      console.log('SW Registered');
-    },
-    onRegisterError(error) {
-      console.log('SW registration error', error);
-    },
-  });
+  } = useRegisterSW();
 
   if (!offlineReady && !needRefresh) {
     return null;

@@ -52,7 +52,7 @@ export function Sidebar({
     <>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out md:z-40',
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
           isOpen ? 'w-64' : 'w-64 md:w-20',
         )}

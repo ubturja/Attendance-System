@@ -37,6 +37,7 @@ const JSON_HEADERS = {
 /**
  * Builds the Laravel API base URL from `VITE_API_BASE_URL`.
  * Accepts an origin (`http://localhost:8000`) or a full API prefix (`http://localhost:8000/api`).
+ * Falls back to localhost only in development; production builds log a critical warning when unset.
  */
 function resolveApiBaseUrl(): string {
   const configuredOrigin = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -52,6 +53,12 @@ function resolveApiBaseUrl(): string {
     return normalizedOrigin.endsWith('/api')
       ? normalizedOrigin
       : `${normalizedOrigin}/api`;
+  }
+
+  if (import.meta.env.PROD) {
+    console.error(
+      'CRITICAL: VITE_API_BASE_URL is not defined in environment variables! Falling back to localhost — API calls will fail in production.',
+    );
   }
 
   return `${DEFAULT_API_ORIGIN}/api`;

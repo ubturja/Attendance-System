@@ -10,6 +10,7 @@ import Users from '../pages/admin/Users';
 import Dashboard from '../pages/employee/Dashboard';
 import Profile from '../pages/employee/Profile';
 import Login from '../pages/auth/Login';
+import NotFound from '../pages/NotFound';
 
 const routes: RouteObject[] = [
   {
@@ -83,6 +84,10 @@ const routes: RouteObject[] = [
         element: <Profile />,
       },
     ],
+  },
+  {
+    path: '*',
+    element: <NotFound />,
   },
 ];
 

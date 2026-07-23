@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, UserRound } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
 import { profileInitials, useCurrentProfile } from '../../hooks/useCurrentProfile';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
@@ -27,12 +27,19 @@ function ProfileTextSkeleton({ className }: { className?: string }) {
 export function EmployeeLayout() {
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+  );
   const { data: profile, isLoading } = useCurrentProfile();
 
   const displayName = profile?.name ?? '';
   const displayRole = profile?.job_title ?? '';
   const teamName = profile?.team?.team_name ?? '—';
   const avatarInitials = profile !== undefined ? profileInitials(profile.name) : '';
+
+  function toggleSidebar() {
+    setIsSidebarOpen((open) => !open);
+  }
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -46,7 +53,12 @@ export function EmployeeLayout() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-slate-200 bg-white">
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out md:z-40',
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+        )}
+      >
         <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-6">
           <img
             src="/logo.png"
@@ -107,13 +119,33 @@ export function EmployeeLayout() {
         </div>
       </aside>
 
-      <div className="min-w-0 pl-64">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-6">
-          <div>
-            <p className="text-sm font-medium text-slate-800">Team Attendance</p>
-            <p className="text-xs text-slate-500">
-              {isLoading ? <ProfileTextSkeleton className="mt-1 h-3 w-20" /> : teamName}
-            </p>
+      {isSidebarOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={toggleSidebar}
+          aria-hidden="true"
+        />
+      ) : null}
+
+      <div className="flex min-h-screen min-w-0 flex-col pl-0 transition-all duration-300 ease-in-out md:pl-64">
+        <header className="sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-gradient-to-r from-white to-brand-50 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="rounded-md p-2 text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand md:hidden"
+              aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+              aria-expanded={isSidebarOpen}
+            >
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            </button>
+
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-800">Team Attendance</p>
+              <p className="text-xs text-slate-500">
+                {isLoading ? <ProfileTextSkeleton className="mt-1 h-3 w-20" /> : teamName}
+              </p>
+            </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
@@ -137,7 +169,7 @@ export function EmployeeLayout() {
           </div>
         </header>
 
-        <main className="min-w-0 p-6">
+        <main className="w-full min-w-0 flex-1 p-6">
           <Outlet />
         </main>
       </div>

@@ -79,5 +79,8 @@ hrms-backend/Homestead.yaml
 # ---------------------------------------------------------------------------
 hrms-frontend/node_modules/
 hrms-frontend/dist/
+hrms-frontend/dev-dist/
 hrms-frontend/dist-ssr/
+dist/
+dev-dist/
 node_modules

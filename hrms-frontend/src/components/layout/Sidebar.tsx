@@ -10,6 +10,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { APP_CONFIG } from '../../config/app';
 import { cn } from '../../lib/utils';
 
 interface NavItem {
@@ -51,7 +52,7 @@ export function Sidebar({
     <>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out md:z-40',
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
           isOpen ? 'w-64' : 'w-64 md:w-20',
         )}
@@ -73,7 +74,12 @@ export function Sidebar({
               isOpen ? 'opacity-100' : 'hidden opacity-0',
             )}
           >
-            <p className="truncate text-sm font-semibold text-slate-800">MTS Attendance</p>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-semibold text-slate-800">{APP_CONFIG.name}</p>
+              <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap text-brand-600">
+                {APP_CONFIG.version}
+              </span>
+            </div>
             <p className="truncate text-xs text-slate-500">Admin Console</p>
           </div>
         </div>

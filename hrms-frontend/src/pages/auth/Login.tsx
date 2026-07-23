@@ -14,6 +14,7 @@ import api, {
 } from '../../lib/api';
 import { getApiErrorMessage } from '../../lib/errors';
 import { queryClient } from '../../lib/queryClient';
+import { APP_CONFIG } from '../../config/app';
 import { cn } from '../../lib/utils';
 import { type UserRole } from '../../components/layout/ProtectedRoute';
 
@@ -109,9 +110,14 @@ export default function Login() {
             alt="MTS Logo"
             className="mx-auto h-14 w-14 rounded-full object-contain"
           />
-          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-brand">
-            MTS Attendance
-          </p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-brand">
+              {APP_CONFIG.name}
+            </p>
+            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap text-brand-600">
+              {APP_CONFIG.version}
+            </span>
+          </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-800">
             Sign in
           </h1>

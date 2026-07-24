@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
+  Calendar,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { label: 'Users', to: '/admin/users', icon: Users },
   { label: 'Teams', to: '/admin/teams', icon: UsersRound },
   { label: 'Leave Types', to: '/admin/leave-types', icon: CalendarDays },
+  { label: 'Calendar', to: '/admin/calendar', icon: Calendar },
   { label: 'Reports', to: '/admin/reports', icon: ClipboardList },
 ];
 

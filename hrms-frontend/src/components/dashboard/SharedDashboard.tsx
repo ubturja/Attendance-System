@@ -15,7 +15,11 @@ import {
   TableRow,
 } from '../ui/Table';
 import { TableErrorRow } from '../ui/TableErrorRow';
-import api from '../../lib/api';
+import api, {
+  getReplacementBalance,
+  type Holiday,
+  type ReplacementLeaveBalance,
+} from '../../lib/api';
 import { buildAttendanceOptions } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
 import { invalidateAttendanceRelatedQueries, queryKeys } from '../../lib/queryKeys';
@@ -87,6 +91,10 @@ interface ProfileRecord {
   leave_balances?: ProfileYearlyLeaveRecord[];
   yearly_leave_records?: ProfileYearlyLeaveRecord[];
   total_absences?: number;
+  /** Holiday for the requested attendance date, when one exists. */
+  holiday?: Holiday | null;
+  /** Compact 30-day rolling Replacement Leave summary (optional; dedicated endpoint preferred). */
+  replacement_leave?: ReplacementLeaveBalance;
 }
 
 interface AttendanceRecordPayload {
@@ -115,6 +123,12 @@ function isWorkFromHomeBalance(balance: ProfileYearlyLeaveRecord): boolean {
   const name = balance.leave_type?.name?.toLowerCase() ?? '';
   const code = balance.leave_type?.leave_type_code?.toUpperCase() ?? '';
   return name === 'work from home' || code === 'W';
+}
+
+function isReplacementLeaveBalance(balance: ProfileYearlyLeaveRecord): boolean {
+  const name = balance.leave_type?.name?.toLowerCase() ?? '';
+  const code = balance.leave_type?.leave_type_code?.toUpperCase() ?? '';
+  return name === 'replacement leave' || code === 'R';
 }
 
 function getLeaveBalances(profile: ProfileRecord | undefined): ProfileYearlyLeaveRecord[] {
@@ -247,9 +261,16 @@ export function SharedDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  const replacementBalanceQuery = useQuery({
+    queryKey: queryKeys.replacementBalance(selectedDate),
+    queryFn: () => getReplacementBalance(selectedDate),
+  });
+
   const teamMembers = profileQuery.data?.team?.users ?? [];
   const teamName = profileQuery.data?.team?.team_name ?? 'your team';
   const currentUserId = profileQuery.data?.id;
+  const selectedHoliday = profileQuery.data?.holiday ?? null;
+  const isHongKongHoliday = selectedHoliday?.type === 'hong_kong';
   const hasExistingAttendance = teamMembers.some(
     (member) => (member.attendance_logs?.length ?? 0) > 0,
   );
@@ -261,8 +282,16 @@ export function SharedDashboard() {
 
   const displayBalances = useMemo(() => {
     const balances = getLeaveBalances(profileQuery.data);
-    return balances.filter((balance) => !isWorkFromHomeBalance(balance));
+    // Replacement Leave uses the 30-day rolling balance card instead of yearly remaining.
+    return balances.filter(
+      (balance) => !isWorkFromHomeBalance(balance) && !isReplacementLeaveBalance(balance),
+    );
   }, [profileQuery.data]);
+
+  const replacementBalance =
+    replacementBalanceQuery.data?.balance ??
+    profileQuery.data?.replacement_leave?.balance ??
+    null;
 
   const totalAbsences = profileQuery.data?.total_absences ?? 0;
 
@@ -318,6 +347,7 @@ export function SharedDashboard() {
   });
   const canSubmitAttendance =
     isViewingToday &&
+    !isHongKongHoliday &&
     !isPageLoading &&
     !isPageError &&
     teamMembers.length > 0 &&
@@ -353,6 +383,11 @@ export function SharedDashboard() {
       setSubmitError(
         'You can only submit or update attendance for today. Contact your Admin for past changes.',
       );
+      return;
+    }
+
+    if (isHongKongHoliday) {
+      setSubmitError('Attendance submission is disabled on Hong Kong public holidays.');
       return;
     }
 
@@ -419,6 +454,27 @@ export function SharedDashboard() {
                 </div>
               </div>
             ))}
+            <div
+              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+              title="Credits from Malaysian holidays worked expire after 30 days"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    Replacement Leave
+                  </p>
+                  <p className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+                    {replacementBalanceQuery.isLoading && replacementBalance === null
+                      ? '—'
+                      : (replacementBalance ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">Valid for 30 days</p>
+                </div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600">
+                  <Wallet className="h-4 w-4" aria-hidden="true" />
+                </div>
+              </div>
+            </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -445,9 +501,11 @@ export function SharedDashboard() {
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-slate-900">Team Attendance Submission</h2>
             <p className="mt-1 text-sm text-slate-500">
-              {isViewingToday
-                ? `Select an attendance code for yourself and each ${teamName} member.`
-                : `Viewing attendance for ${selectedDate}. Past days are read-only — contact your Admin for changes.`}
+              {isHongKongHoliday
+                ? 'Attendance submission is disabled on Hong Kong public holidays.'
+                : isViewingToday
+                  ? `Select an attendance code for yourself and each ${teamName} member.`
+                  : `Viewing attendance for ${selectedDate}. Past days are read-only — contact your Admin for changes.`}
             </p>
           </div>
           <div className="w-full shrink-0 sm:w-44">
@@ -459,7 +517,7 @@ export function SharedDashboard() {
               onChange={(event) => setSelectedDate(event.target.value)}
               aria-label="Attendance date"
             />
-            {isNotToday ? (
+            {isNotToday && !isHongKongHoliday ? (
               <p className="mt-1.5 text-sm text-red-500">
                 Contact your Admin to update past attendances.
               </p>
@@ -467,98 +525,111 @@ export function SharedDashboard() {
           </div>
         </div>
 
-        {submitSuccess !== undefined ? (
-          <Alert variant="success" className="mx-5 mt-4">
-            {submitSuccess}
-          </Alert>
-        ) : null}
+        {isHongKongHoliday ? (
+          <div className="m-5 rounded-lg border border-red-100 bg-red-50 px-5 py-10 text-center">
+            <p className="text-base font-medium text-red-800">
+              🇭🇰 Hong Kong Public Holiday - Attendance submission is disabled for this date.
+            </p>
+            {selectedHoliday?.name ? (
+              <p className="mt-2 text-sm text-red-700/80">{selectedHoliday.name}</p>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {submitSuccess !== undefined ? (
+              <Alert variant="success" className="mx-5 mt-4">
+                {submitSuccess}
+              </Alert>
+            ) : null}
 
-        {submitError !== undefined ? (
-          <Alert variant="error" className="mx-5 mt-4">
-            {submitError}
-          </Alert>
-        ) : null}
+            {submitError !== undefined ? (
+              <Alert variant="error" className="mx-5 mt-4">
+                {submitError}
+              </Alert>
+            ) : null}
 
-        <Table className="min-w-max">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Team Member</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead className="w-64">Attendance Code</TableHead>
-            </TableRow>
-          </TableHeader>
-          {isPageLoading ? (
-            <TeamAttendanceTableSkeleton />
-          ) : (
-            <TableBody>
-              {isPageError ? (
-                <TableErrorRow colSpan={3} />
-              ) : teamMembers.length === 0 ? (
+            <Table className="min-w-max">
+              <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={3} className="py-10 text-center text-sm text-slate-500">
-                    No team members available for attendance submission.
-                  </TableCell>
+                  <TableHead>Team Member</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="w-64">Attendance Code</TableHead>
                 </TableRow>
+              </TableHeader>
+              {isPageLoading ? (
+                <TeamAttendanceTableSkeleton />
               ) : (
-                teamMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar initials={memberInitials(member.name)} size="sm" />
-                        <span className="font-medium text-slate-900">{member.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-slate-500">
-                      {getMemberRoleLabel(member, currentUserId)}
-                    </TableCell>
-                    <TableCell>
-                      <select
-                        className={cn(
-                          'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                          'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
-                        )}
-                        value={selections[member.id] ?? ''}
-                        onChange={(event) => handleCodeChange(member.id, event.target.value)}
-                        disabled={isNotToday || isSubmitting || areLeaveTypesLoading}
-                        aria-label={`Attendance code for ${member.name}`}
-                      >
-                        <option value="" disabled hidden>
-                          Mark Attendance
-                        </option>
-                        {attendanceOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </TableCell>
-                  </TableRow>
-                ))
+                <TableBody>
+                  {isPageError ? (
+                    <TableErrorRow colSpan={3} />
+                  ) : teamMembers.length === 0 ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={3} className="py-10 text-center text-sm text-slate-500">
+                        No team members available for attendance submission.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    teamMembers.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar initials={memberInitials(member.name)} size="sm" />
+                            <span className="font-medium text-slate-900">{member.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-slate-500">
+                          {getMemberRoleLabel(member, currentUserId)}
+                        </TableCell>
+                        <TableCell>
+                          <select
+                            className={cn(
+                              'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                              'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
+                            )}
+                            value={selections[member.id] ?? ''}
+                            onChange={(event) => handleCodeChange(member.id, event.target.value)}
+                            disabled={isNotToday || isSubmitting || areLeaveTypesLoading}
+                            aria-label={`Attendance code for ${member.name}`}
+                          >
+                            <option value="" disabled hidden>
+                              Mark Attendance
+                            </option>
+                            {attendanceOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
               )}
-            </TableBody>
-          )}
-        </Table>
+            </Table>
 
-        <div className="border-t border-slate-200 p-5">
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            className="h-12 w-full text-base disabled:bg-slate-400 disabled:cursor-not-allowed"
-            disabled={isNotToday || !canSubmitAttendance || isSubmitting}
-          >
-            {isSubmitting
-              ? hasExistingAttendance
-                ? 'Updating...'
-                : 'Submitting...'
-              : isNotToday
-                ? 'Past Attendance is Read-Only'
-                : hasExistingAttendance
-                  ? 'Update Attendance'
-                  : 'Submit Attendance'}
-          </Button>
-        </div>
+            <div className="border-t border-slate-200 p-5">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                className="h-12 w-full text-base disabled:bg-slate-400 disabled:cursor-not-allowed"
+                disabled={isNotToday || !canSubmitAttendance || isSubmitting}
+              >
+                {isSubmitting
+                  ? hasExistingAttendance
+                    ? 'Updating...'
+                    : 'Submitting...'
+                  : isNotToday
+                    ? 'Past Attendance is Read-Only'
+                    : hasExistingAttendance
+                      ? 'Update Attendance'
+                      : 'Submit Attendance'}
+              </Button>
+            </div>
+          </>
+        )}
       </form>
     </div>
   );

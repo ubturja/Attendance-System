@@ -109,4 +109,17 @@ class AttendanceValidationException extends Exception
             ['user_id' => $userId, 'date' => $date],
         );
     }
+
+    public static function insufficientReplacementLeaveBalance(int $userId, string $date, float $balance): self
+    {
+        return new self(
+            'Insufficient Replacement Leave balance or credits have expired.',
+            [
+                'user_id' => $userId,
+                'date' => $date,
+                'balance' => $balance,
+            ],
+            self::HTTP_UNPROCESSABLE,
+        );
+    }
 }

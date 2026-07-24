@@ -25,6 +25,11 @@ export const queryKeys = {
   profile: ['profile'] as const,
   /** Dashboard attendance view scoped by calendar date (`GET /profile?date=`). */
   profileByDate: (date: string) => ['profile', 'by-date', date] as const,
+  holidays: {
+    all: ['holidays'] as const,
+  },
+  /** 30-day rolling Replacement Leave balance (`GET /user/replacement-balance?date=`). */
+  replacementBalance: (date: string) => ['user', 'replacement-balance', date] as const,
   reports: {
     all: ['reports'] as const,
     yearly: (year: number, teamId: string) =>
@@ -55,6 +60,7 @@ export function invalidateAttendanceRelatedQueries(queryClient: QueryClient): vo
   void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
   void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
   void queryClient.invalidateQueries({ queryKey: queryKeys.users.balancesRoot });
+  void queryClient.invalidateQueries({ queryKey: ['user', 'replacement-balance'] });
 }
 
 /** Alias used by leave-allocation and user mutations — same as {@link invalidateAttendanceRelatedQueries}. */

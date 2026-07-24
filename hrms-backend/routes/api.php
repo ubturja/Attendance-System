@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admin\TeamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\LeaveAllocationController;
 use App\Http\Controllers\Api\LeaveTypeController;
 use App\Http\Controllers\Api\ProfileController;
@@ -45,11 +46,26 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/attendance', [AttendanceController::class, 'store']);
 
         // Profile + current-year leave balances + team roster for the dashboard.
+        // Also embeds holiday-for-date + compact 30-day replacement leave summary.
         Route::get('/profile', [ProfileController::class, 'show']);
+
+        // 30-day rolling Replacement Leave balance (Malaysia holidays Present − R taken).
+        Route::get('/user/replacement-balance', [ProfileController::class, 'replacementBalance']);
 
         // Module 3 (read): active leave types for attendance dropdowns.
         Route::get('/leave-types', [LeaveTypeController::class, 'index']);
+
+        // Holiday calendar (read): all authenticated users.
+        Route::get('/holidays', [HolidayController::class, 'index']);
     });
+
+    // Holiday calendar (write): Admin-only create / update / delete.
+    Route::post('/holidays', [HolidayController::class, 'store'])
+        ->middleware(['role:Admin']);
+    Route::put('/holidays/{holiday}', [HolidayController::class, 'update'])
+        ->middleware(['role:Admin']);
+    Route::delete('/holidays/{holiday}', [HolidayController::class, 'destroy'])
+        ->middleware(['role:Admin']);
 
     // Admin daily-report correction — replaces code on an existing log row.
     Route::put('/attendance/{attendanceLog}', [AttendanceController::class, 'update'])

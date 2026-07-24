@@ -225,4 +225,78 @@ api.interceptors.response.use(
   },
 );
 
+/** Company holiday calendar entry returned by `GET|POST|PUT /api/holidays`. */
+export type HolidayType = 'malaysia' | 'hong_kong';
+
+export interface Holiday {
+  id: number;
+  name: string;
+  date: string;
+  description?: string;
+  type: HolidayType;
+}
+
+/** Payload for creating or updating a holiday (Admin). */
+export type HolidayInput = {
+  name: string;
+  date: string;
+  description?: string | null;
+  type: HolidayType;
+};
+
+/** 30-day rolling Replacement Leave balance (`GET /api/user/replacement-balance`). */
+export interface ReplacementLeaveBalance {
+  balance: number;
+  holidays_worked: number;
+  leaves_taken: number;
+  window_start: string;
+  window_end: string;
+  window_days: number;
+  holidays_worked_dates: string[];
+  leaves_taken_dates: string[];
+  oldest_valid_credit_date?: string | null;
+}
+
+/** Fetches all holidays ordered by date (`GET /api/holidays`). */
+export async function getHolidays(): Promise<Holiday[]> {
+  const response = await api.get<ApiSuccessResponse<Holiday[]>>('/holidays');
+  return response.data.data;
+}
+
+/** Creates a holiday entry (`POST /api/holidays`, Admin only). */
+export async function createHoliday(data: HolidayInput): Promise<Holiday> {
+  const response = await api.post<ApiSuccessResponse<Holiday>>('/holidays', data);
+  return response.data.data;
+}
+
+/** Updates a holiday entry (`PUT /api/holidays/{id}`, Admin only). */
+export async function updateHoliday(
+  id: number,
+  data: Partial<HolidayInput>,
+): Promise<Holiday> {
+  const response = await api.put<ApiSuccessResponse<Holiday>>(`/holidays/${id}`, data);
+  return response.data.data;
+}
+
+/** Deletes a holiday entry (`DELETE /api/holidays/{id}`, Admin only). */
+export async function deleteHoliday(id: number): Promise<void> {
+  await api.delete<ApiSuccessResponse<null>>(`/holidays/${id}`);
+}
+
+/**
+ * 30-day rolling Replacement Leave balance for the authenticated user
+ * (`GET /api/user/replacement-balance?date=`).
+ */
+export async function getReplacementBalance(
+  date?: string,
+): Promise<ReplacementLeaveBalance> {
+  const response = await api.get<ApiSuccessResponse<ReplacementLeaveBalance>>(
+    '/user/replacement-balance',
+    {
+      params: date !== undefined && date !== '' ? { date } : undefined,
+    },
+  );
+  return response.data.data;
+}
+
 export default api;

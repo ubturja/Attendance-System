@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
 import { profileInitials, useCurrentProfile } from '../../hooks/useCurrentProfile';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
@@ -17,6 +17,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/employee', end: true, icon: LayoutDashboard },
+  { label: 'Calendar', to: '/employee/calendar', end: true, icon: Calendar },
   { label: 'Profile', to: '/employee/profile', end: true, icon: UserRound },
 ];
 

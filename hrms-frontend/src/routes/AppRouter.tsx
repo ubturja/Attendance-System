@@ -9,6 +9,7 @@ import Teams from '../pages/admin/Teams';
 import Users from '../pages/admin/Users';
 import Dashboard from '../pages/employee/Dashboard';
 import Profile from '../pages/employee/Profile';
+import Calendar from '../pages/shared/Calendar';
 import Login from '../pages/auth/Login';
 import NotFound from '../pages/NotFound';
 
@@ -50,6 +51,10 @@ const routes: RouteObject[] = [
         element: <LeaveTypes />,
       },
       {
+        path: 'calendar',
+        element: <Calendar />,
+      },
+      {
         path: 'reports',
         element: <Reports />,
       },
@@ -78,6 +83,10 @@ const routes: RouteObject[] = [
       {
         path: 'dashboard',
         element: <Dashboard />,
+      },
+      {
+        path: 'calendar',
+        element: <Calendar />,
       },
       {
         path: 'profile',

@@ -59,12 +59,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/holidays', [HolidayController::class, 'index']);
     });
 
-    // Holiday calendar (write): Admin-only create / update / delete.
+    // Holiday calendar (write): Admin-only create / update / delete / restore.
     Route::post('/holidays', [HolidayController::class, 'store'])
         ->middleware(['role:Admin']);
     Route::put('/holidays/{holiday}', [HolidayController::class, 'update'])
         ->middleware(['role:Admin']);
     Route::delete('/holidays/{holiday}', [HolidayController::class, 'destroy'])
+        ->middleware(['role:Admin']);
+    Route::post('/holidays/{id}/restore', [HolidayController::class, 'restore'])
         ->middleware(['role:Admin']);
 
     // Admin daily-report correction — replaces code on an existing log row.

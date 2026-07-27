@@ -13,7 +13,8 @@ import {
   subMonths,
 } from 'date-fns';
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, List, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { HolidayListAdmin } from '../../components/HolidayListAdmin';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -130,6 +131,7 @@ export default function Calendar() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [panelOpen, setPanelOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
@@ -161,7 +163,7 @@ export default function Calendar() {
     isError,
   } = useQuery({
     queryKey: queryKeys.holidays.all,
-    queryFn: getHolidays,
+    queryFn: () => getHolidays(),
   });
 
   function invalidateHolidays() {
@@ -189,6 +191,7 @@ export default function Calendar() {
     resetForm();
     setActionError(undefined);
     setActionSuccess(undefined);
+    setListOpen(false);
     setPanelOpen(true);
   }
 
@@ -201,7 +204,15 @@ export default function Calendar() {
     setFormError(undefined);
     setActionError(undefined);
     setActionSuccess(undefined);
+    setListOpen(false);
     setPanelOpen(true);
+  }
+
+  function handleOpenList() {
+    setActionError(undefined);
+    setActionSuccess(undefined);
+    setPanelOpen(false);
+    setListOpen(true);
   }
 
   const createHolidayMutation = useMutation({
@@ -277,7 +288,7 @@ export default function Calendar() {
 
   function handleDeleteHoliday(holiday: Holiday) {
     const confirmed = window.confirm(
-      `Delete "${holiday.name}" on ${formatHolidayDate(holiday.date)}? This cannot be undone.`,
+      `Delete "${holiday.name}" on ${formatHolidayDate(holiday.date)}? You can restore it later from View all Holidays.`,
     );
 
     if (!confirmed) {
@@ -303,10 +314,16 @@ export default function Calendar() {
         </div>
 
         {isAdmin ? (
-          <Button type="button" variant="primary" size="md" onClick={handleOpenCreatePanel}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Add Holiday
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="md" onClick={handleOpenList}>
+              <List className="h-4 w-4" aria-hidden="true" />
+              View all Holidays
+            </Button>
+            <Button type="button" variant="primary" size="md" onClick={handleOpenCreatePanel}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Add Holiday
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -412,110 +429,118 @@ export default function Calendar() {
       </div>
 
       {isAdmin ? (
-        <SlideOver
-          isOpen={panelOpen}
-          onClose={handleClosePanel}
-          title={isEditMode ? 'Edit Holiday' : 'Add Holiday'}
-          description={
-            isEditMode
-              ? 'Update the holiday name, date, type, or description.'
-              : 'Add a company holiday to the calendar.'
-          }
-        >
-          <div className="flex flex-1 flex-col gap-5 p-6">
-            {formError !== undefined ? <Alert variant="error">{formError}</Alert> : null}
+        <>
+          <HolidayListAdmin
+            isOpen={listOpen}
+            onClose={() => setListOpen(false)}
+            onEdit={handleOpenEditPanel}
+          />
 
-            <Input
-              id="holiday-name"
-              label="Name"
-              placeholder="e.g. New Year's Day"
-              value={name}
-              disabled={isSaving}
-              onChange={(event) => {
-                setName(event.target.value);
-                if (formError !== undefined) {
-                  setFormError(undefined);
-                }
-              }}
-            />
+          <SlideOver
+            isOpen={panelOpen}
+            onClose={handleClosePanel}
+            title={isEditMode ? 'Edit Holiday' : 'Add Holiday'}
+            description={
+              isEditMode
+                ? 'Update the holiday name, date, type, or description.'
+                : 'Add a company holiday to the calendar.'
+            }
+          >
+            <div className="flex flex-1 flex-col gap-5 p-6">
+              {formError !== undefined ? <Alert variant="error">{formError}</Alert> : null}
 
-            <Input
-              id="holiday-date"
-              label="Date"
-              type="date"
-              value={date}
-              disabled={isSaving}
-              onChange={(event) => {
-                setDate(event.target.value);
-                if (formError !== undefined) {
-                  setFormError(undefined);
-                }
-              }}
-            />
+              <Input
+                id="holiday-name"
+                label="Name"
+                placeholder="e.g. New Year's Day"
+                value={name}
+                disabled={isSaving}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  if (formError !== undefined) {
+                    setFormError(undefined);
+                  }
+                }}
+              />
 
-            <div className="flex w-full flex-col gap-1.5">
-              <label
-                htmlFor="holiday-type"
-                className="text-sm font-medium leading-none text-slate-700"
-              >
-                Holiday Type
-              </label>
-              <div className="relative">
-                <select
-                  id="holiday-type"
-                  value={type}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    setType(event.target.value as HolidayType);
-                    if (formError !== undefined) {
-                      setFormError(undefined);
-                    }
-                  }}
-                  className={cn(
-                    'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                    'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
-                  )}
+              <Input
+                id="holiday-date"
+                label="Date"
+                type="date"
+                value={date}
+                disabled={isSaving}
+                onChange={(event) => {
+                  setDate(event.target.value);
+                  if (formError !== undefined) {
+                    setFormError(undefined);
+                  }
+                }}
+              />
+
+              <div className="flex w-full flex-col gap-1.5">
+                <label
+                  htmlFor="holiday-type"
+                  className="text-sm font-medium leading-none text-slate-700"
                 >
-                  <option value="malaysia">Malaysian Holiday</option>
-                  <option value="hong_kong">Hong Kong Holiday</option>
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                  aria-hidden="true"
-                />
+                  Holiday Type
+                </label>
+                <div className="relative">
+                  <select
+                    id="holiday-type"
+                    value={type}
+                    disabled={isSaving}
+                    onChange={(event) => {
+                      setType(event.target.value as HolidayType);
+                      if (formError !== undefined) {
+                        setFormError(undefined);
+                      }
+                    }}
+                    className={cn(
+                      'h-10 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-900',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                      'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
+                    )}
+                  >
+                    <option value="malaysia">Malaysian Holiday</option>
+                    <option value="hong_kong">Hong Kong Holiday</option>
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    aria-hidden="true"
+                  />
+                </div>
               </div>
+
+              <Input
+                id="holiday-description"
+                label="Description"
+                placeholder="Optional notes"
+                value={description}
+                disabled={isSaving}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  if (formError !== undefined) {
+                    setFormError(undefined);
+                  }
+                }}
+              />
             </div>
 
-            <Input
-              id="holiday-description"
-              label="Description"
-              placeholder="Optional notes"
-              value={description}
-              disabled={isSaving}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                if (formError !== undefined) {
-                  setFormError(undefined);
-                }
-              }}
-            />
-          </div>
-
-          <div className="mt-auto flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
-            <Button type="button" variant="outline" onClick={handleClosePanel} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={handleSaveHoliday}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save'}
-            </Button>
-          </div>
-        </SlideOver>
+            <div className="mt-auto flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <Button type="button" variant="outline" onClick={handleClosePanel} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleSaveHoliday}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save'}
+              </Button>
+            </div>
+          </SlideOver>
+        </>
       ) : null}
     </div>
   );

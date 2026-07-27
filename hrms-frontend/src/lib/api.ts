@@ -234,6 +234,8 @@ export interface Holiday {
   date: string;
   description?: string;
   type: HolidayType;
+  /** Present when soft-deleted; `null`/absent for active holidays. */
+  deleted_at?: string | null;
 }
 
 /** Payload for creating or updating a holiday (Admin). */
@@ -257,9 +259,14 @@ export interface ReplacementLeaveBalance {
   oldest_valid_credit_date?: string | null;
 }
 
-/** Fetches all holidays ordered by date (`GET /api/holidays`). */
-export async function getHolidays(): Promise<Holiday[]> {
-  const response = await api.get<ApiSuccessResponse<Holiday[]>>('/holidays');
+/**
+ * Fetches holidays ordered by date (`GET /api/holidays`).
+ * Pass `includeTrashed: true` (Admin) to include soft-deleted rows via `?include_trashed=true`.
+ */
+export async function getHolidays(includeTrashed?: boolean): Promise<Holiday[]> {
+  const response = await api.get<ApiSuccessResponse<Holiday[]>>('/holidays', {
+    params: includeTrashed === true ? { include_trashed: 'true' } : undefined,
+  });
   return response.data.data;
 }
 
@@ -278,9 +285,15 @@ export async function updateHoliday(
   return response.data.data;
 }
 
-/** Deletes a holiday entry (`DELETE /api/holidays/{id}`, Admin only). */
+/** Soft-deletes a holiday entry (`DELETE /api/holidays/{id}`, Admin only). */
 export async function deleteHoliday(id: number): Promise<void> {
   await api.delete<ApiSuccessResponse<null>>(`/holidays/${id}`);
+}
+
+/** Restores a soft-deleted holiday (`POST /api/holidays/{id}/restore`, Admin only). */
+export async function restoreHoliday(id: number): Promise<Holiday> {
+  const response = await api.post<ApiSuccessResponse<Holiday>>(`/holidays/${id}/restore`);
+  return response.data.data;
 }
 
 /**

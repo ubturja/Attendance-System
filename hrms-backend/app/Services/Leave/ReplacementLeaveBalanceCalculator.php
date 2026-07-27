@@ -66,7 +66,8 @@ class ReplacementLeaveBalanceCalculator
                 $query->selectRaw('1')
                     ->from('holidays')
                     ->whereColumn('holidays.date', 'attendance_logs.date')
-                    ->where('holidays.type', self::CREDIT_HOLIDAY_TYPE);
+                    ->where('holidays.type', self::CREDIT_HOLIDAY_TYPE)
+                    ->whereNull('holidays.deleted_at');
             })
             ->orderBy('date')
             ->pluck('date')

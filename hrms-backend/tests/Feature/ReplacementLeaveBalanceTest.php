@@ -193,6 +193,35 @@ class ReplacementLeaveBalanceTest extends TestCase
         $nonHoliday->assertJsonPath('data.holiday', null);
     }
 
+    public function test_soft_deleted_malaysian_holiday_does_not_generate_replacement_credit(): void
+    {
+        [$employee] = $this->seedEmployeeWithReplacementLeave();
+
+        $holiday = Holiday::query()->create([
+            'name' => 'Soft Delete Credit Holiday',
+            'date' => '2026-07-10',
+            'type' => 'malaysia',
+        ]);
+        $this->logAttendance($employee, '2026-07-10', 'O');
+
+        Sanctum::actingAs($employee);
+
+        $beforeDelete = $this->getJson('/api/user/replacement-balance?date=2026-07-24');
+        $beforeDelete->assertOk();
+        $beforeDelete->assertJsonPath('data.holidays_worked', 1);
+        $beforeDelete->assertJsonPath('data.balance', 1);
+        $beforeDelete->assertJsonPath('data.holidays_worked_dates', ['2026-07-10']);
+
+        $holiday->delete();
+
+        $afterDelete = $this->getJson('/api/user/replacement-balance?date=2026-07-24');
+        $afterDelete->assertOk();
+        $afterDelete->assertJsonPath('data.holidays_worked', 0);
+        $afterDelete->assertJsonPath('data.balance', 0);
+        $afterDelete->assertJsonPath('data.holidays_worked_dates', []);
+        $afterDelete->assertJsonPath('data.oldest_valid_credit_date', null);
+    }
+
     /**
      * @return array{0: User, 1: LeaveType}
      */

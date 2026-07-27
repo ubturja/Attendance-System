@@ -272,6 +272,58 @@ class ReplacementLeaveEarningSyncTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_force_revoke_when_replacement_leave_already_taken(): void
+    {
+        [$employee, $leaveTypeR] = $this->seedEmployeeWithReplacementLeave();
+        $admin = User::factory()->admin()->forTeam($employee->team)->create();
+
+        Holiday::query()->create([
+            'name' => 'Past Malaysia Holiday',
+            'date' => '2026-07-10',
+            'type' => 'malaysia',
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson('/api/admin/reports/daily/update', [
+            'user_id' => $employee->id,
+            'date' => '2026-07-10',
+            'code' => 'O',
+        ])->assertOk();
+
+        // Consume the earned credit on a later weekday.
+        Carbon::setTestNow(Carbon::parse('2026-07-27'));
+        Sanctum::actingAs($employee);
+
+        $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => '2026-07-27',
+                    'code' => 'R',
+                ],
+            ],
+        ])->assertCreated();
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson('/api/admin/reports/daily/update', [
+            'user_id' => $employee->id,
+            'date' => '2026-07-10',
+            'code' => 'X',
+        ])->assertOk();
+
+        $record = UserYearlyLeaveRecord::query()
+            ->where('user_id', $employee->id)
+            ->where('leave_type_id', $leaveTypeR->id)
+            ->where('year', 2026)
+            ->firstOrFail();
+
+        $this->assertSame(0.0, (float) $record->assigned_days);
+        $this->assertSame(1.0, (float) $record->taken_days);
+        $this->assertSame(-1.0, (float) $record->assigned_days - (float) $record->taken_days);
+    }
+
     /**
      * @return array{0: User, 1: LeaveType}
      */

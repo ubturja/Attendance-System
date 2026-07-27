@@ -90,7 +90,8 @@ class AttendanceController extends Controller
         /** @var list<array{user_id: int, date: string, code: string}> $records */
         $records = $request->validated('records');
 
-        // Reject Hong Kong public holidays for every payload date (not only today()).
+        // Reject Hong Kong public holidays for every payload date (not only today()),
+        // except Admins who may correct attendance on those dates.
         // Malaysian holidays: Present (`O`), clear (`X`/empty), or any code for Admins.
         /** @var User $actor */
         $actor = $request->user();
@@ -99,7 +100,7 @@ class AttendanceController extends Controller
             $submissionDate = $record['date'] ?? now()->toDateString();
             $submissionCode = isset($record['code']) ? (string) $record['code'] : null;
 
-            if (($forbidden = $this->forbidIfHongKongHoliday($submissionDate)) !== null) {
+            if (($forbidden = $this->forbidIfHongKongHoliday($submissionDate, $actor)) !== null) {
                 return $forbidden;
             }
 
@@ -224,12 +225,20 @@ class AttendanceController extends Controller
     /**
      * Abort attendance writes when the target date is a Hong Kong public holiday.
      *
-     * Evaluates the request/log date itself — not today() — so Admin corrections
-     * for past HK holidays are also blocked. Soft-deleted HK holidays remain locked
-     * so archiving a holiday cannot reopen that date for attendance writes.
+     * Evaluates the request/log date itself — not today() — so past HK holidays
+     * stay locked for employees. Soft-deleted HK holidays remain locked so
+     * archiving a holiday cannot reopen that date for attendance writes.
+     *
+     * Admins bypass this gate entirely so daily-report corrections can run on
+     * HK holiday dates.
      */
-    private function forbidIfHongKongHoliday(string $date): ?JsonResponse
+    private function forbidIfHongKongHoliday(string $date, ?User $actor = null): ?JsonResponse
     {
+        // Admin corrections: HK holiday lockdown does not apply.
+        if ($actor !== null && $actor->job_title === 'Admin') {
+            return null;
+        }
+
         $normalizedDate = Carbon::parse($date)->toDateString();
 
         $isHongKongHoliday = Holiday::withTrashed()
@@ -527,7 +536,7 @@ class AttendanceController extends Controller
         /** @var User $admin */
         $admin = $request->user();
 
-        if (($forbidden = $this->forbidIfHongKongHoliday($logDate)) !== null) {
+        if (($forbidden = $this->forbidIfHongKongHoliday($logDate, $admin)) !== null) {
             return $forbidden;
         }
 
@@ -574,7 +583,7 @@ class AttendanceController extends Controller
         /** @var User $admin */
         $admin = $request->user();
 
-        if (($forbidden = $this->forbidIfHongKongHoliday($date)) !== null) {
+        if (($forbidden = $this->forbidIfHongKongHoliday($date, $admin)) !== null) {
             return $forbidden;
         }
 

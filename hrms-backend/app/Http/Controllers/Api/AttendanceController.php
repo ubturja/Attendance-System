@@ -91,7 +91,10 @@ class AttendanceController extends Controller
         $records = $request->validated('records');
 
         // Reject Hong Kong public holidays for every payload date (not only today()).
-        // Malaysian holidays accept Present (`O`) only (or empty clear).
+        // Malaysian holidays: Present (`O`), clear (`X`/empty), or any code for Admins.
+        /** @var User $actor */
+        $actor = $request->user();
+
         foreach ($records as $record) {
             $submissionDate = $record['date'] ?? now()->toDateString();
             $submissionCode = isset($record['code']) ? (string) $record['code'] : null;
@@ -100,7 +103,7 @@ class AttendanceController extends Controller
                 return $forbidden;
             }
 
-            if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($submissionDate, $submissionCode)) !== null) {
+            if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($submissionDate, $submissionCode, $actor)) !== null) {
                 return $forbidden;
             }
         }
@@ -117,11 +120,8 @@ class AttendanceController extends Controller
             }
         }
 
-        /** @var User $authenticatedUser */
-        $authenticatedUser = $request->user();
-
         try {
-            $this->assertEmployeeTeamScope($authenticatedUser, $records);
+            $this->assertEmployeeTeamScope($actor, $records);
 
             // ── ATOMIC BATCH: all records succeed or none persist ─────────────────
             $createdLogs = DB::transaction(function () use ($records): array {
@@ -250,12 +250,17 @@ class AttendanceController extends Controller
     /**
      * Abort non-Present attendance writes on Malaysian public holidays.
      *
-     * Present (`O`) is allowed so staff can earn Replacement Leave. Empty/null
-     * codes are treated as a clear attempt and are not blocked here.
+     * Allowed without Admin privilege:
+     * - Present (`O`) — earns Replacement Leave
+     * - Clear / OFF (`X`) or empty/null — same day only (reverses earned credit via sync)
+     *
+     * Admins bypass this gate entirely so mistaken Present can be corrected and
+     * the `taken_days` ledger guard in ReplacementLeaveEarningSync can run.
      */
-    private function forbidNonPresentOnMalaysianHoliday(string $date, ?string $code): ?JsonResponse
+    private function forbidNonPresentOnMalaysianHoliday(string $date, ?string $code, ?User $actor = null): ?JsonResponse
     {
-        $normalizedDate = Carbon::parse($date)->toDateString();
+        $parsedDate = Carbon::parse($date);
+        $normalizedDate = $parsedDate->toDateString();
 
         $isMalaysianHoliday = Holiday::query()
             ->whereDate('date', $normalizedDate)
@@ -266,9 +271,23 @@ class AttendanceController extends Controller
             return null;
         }
 
-        $normalizedCode = $code === null ? '' : strtoupper(trim($code));
+        // Admin corrections: any code / any day (breaks the Present-only deadlock).
+        if ($actor !== null && $actor->job_title === 'Admin') {
+            return null;
+        }
 
-        if ($normalizedCode === '' || $normalizedCode === 'O') {
+        $normalizedCode = $code === null ? '' : strtoupper(trim($code));
+        $isClearAction = $normalizedCode === '' || $normalizedCode === 'X';
+
+        // Employees may only un-submit Malaysian holiday Present on the same day.
+        if ($isClearAction && ! $parsedDate->isToday()) {
+            return response()->json([
+                'message' => 'You can only un-submit attendance on a Malaysian Public Holiday on the same day. Please contact HR.',
+            ], 422);
+        }
+
+        // Present earns credit; same-day X / empty clears and triggers earning sync reverse.
+        if ($normalizedCode === '' || $normalizedCode === 'O' || $normalizedCode === 'X') {
             return null;
         }
 
@@ -505,16 +524,16 @@ class AttendanceController extends Controller
         $logDate = Carbon::parse($attendanceLog->date)->toDateString();
         $newCode = strtoupper(trim($request->validated('code')));
 
+        /** @var User $admin */
+        $admin = $request->user();
+
         if (($forbidden = $this->forbidIfHongKongHoliday($logDate)) !== null) {
             return $forbidden;
         }
 
-        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($logDate, $newCode)) !== null) {
+        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($logDate, $newCode, $admin)) !== null) {
             return $forbidden;
         }
-
-        /** @var User $admin */
-        $admin = $request->user();
 
         try {
             $updatedLog = DB::transaction(function () use ($attendanceLog, $newCode, $admin): AttendanceLog {
@@ -552,16 +571,16 @@ class AttendanceController extends Controller
         $date = Carbon::parse($request->validated('date'))->toDateString();
         $newCode = $request->attendanceCode();
 
+        /** @var User $admin */
+        $admin = $request->user();
+
         if (($forbidden = $this->forbidIfHongKongHoliday($date)) !== null) {
             return $forbidden;
         }
 
-        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($date, $newCode)) !== null) {
+        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($date, $newCode, $admin)) !== null) {
             return $forbidden;
         }
-
-        /** @var User $admin */
-        $admin = $request->user();
 
         try {
             $updatedLog = DB::transaction(function () use ($userId, $date, $newCode, $admin): AttendanceLog {

@@ -15,11 +15,7 @@ import {
   TableRow,
 } from '../ui/Table';
 import { TableErrorRow } from '../ui/TableErrorRow';
-import api, {
-  getReplacementBalance,
-  type Holiday,
-  type ReplacementLeaveBalance,
-} from '../../lib/api';
+import api, { type Holiday } from '../../lib/api';
 import { buildAttendanceOptions } from '../../lib/attendanceOptions';
 import { getApiErrorMessage } from '../../lib/errors';
 import { invalidateAttendanceRelatedQueries, queryKeys } from '../../lib/queryKeys';
@@ -93,8 +89,6 @@ interface ProfileRecord {
   total_absences?: number;
   /** Holiday for the requested attendance date, when one exists. */
   holiday?: Holiday | null;
-  /** Compact 30-day rolling Replacement Leave summary (optional; dedicated endpoint preferred). */
-  replacement_leave?: ReplacementLeaveBalance;
 }
 
 interface AttendanceRecordPayload {
@@ -123,12 +117,6 @@ function isWorkFromHomeBalance(balance: ProfileYearlyLeaveRecord): boolean {
   const name = balance.leave_type?.name?.toLowerCase() ?? '';
   const code = balance.leave_type?.leave_type_code?.toUpperCase() ?? '';
   return name === 'work from home' || code === 'W';
-}
-
-function isReplacementLeaveBalance(balance: ProfileYearlyLeaveRecord): boolean {
-  const name = balance.leave_type?.name?.toLowerCase() ?? '';
-  const code = balance.leave_type?.leave_type_code?.toUpperCase() ?? '';
-  return name === 'replacement leave' || code === 'R';
 }
 
 function getLeaveBalances(profile: ProfileRecord | undefined): ProfileYearlyLeaveRecord[] {
@@ -261,37 +249,32 @@ export function SharedDashboard() {
     refetchOnWindowFocus: false,
   });
 
-  const replacementBalanceQuery = useQuery({
-    queryKey: queryKeys.replacementBalance(selectedDate),
-    queryFn: () => getReplacementBalance(selectedDate),
-  });
-
   const teamMembers = profileQuery.data?.team?.users ?? [];
   const teamName = profileQuery.data?.team?.team_name ?? 'your team';
   const currentUserId = profileQuery.data?.id;
   const selectedHoliday = profileQuery.data?.holiday ?? null;
   const isHongKongHoliday = selectedHoliday?.type === 'hong_kong';
+  const isMalaysianHoliday = selectedHoliday?.type === 'malaysia';
   const hasExistingAttendance = teamMembers.some(
     (member) => (member.attendance_logs?.length ?? 0) > 0,
   );
 
-  const attendanceOptions = useMemo(
-    () => buildAttendanceOptions(leaveTypesQuery.data ?? []),
-    [leaveTypesQuery.data],
-  );
+  const attendanceOptions = useMemo(() => {
+    const options = buildAttendanceOptions(leaveTypesQuery.data ?? []);
+
+    // Malaysian holidays: only Present (O) may be submitted (blank default stays in the select).
+    if (isMalaysianHoliday) {
+      return options.filter((option) => option.value === 'O');
+    }
+
+    return options;
+  }, [leaveTypesQuery.data, isMalaysianHoliday]);
 
   const displayBalances = useMemo(() => {
     const balances = getLeaveBalances(profileQuery.data);
-    // Replacement Leave uses the 30-day rolling balance card instead of yearly remaining.
-    return balances.filter(
-      (balance) => !isWorkFromHomeBalance(balance) && !isReplacementLeaveBalance(balance),
-    );
+    // Hide attendance-only statuses (e.g. WFH); Replacement Leave uses yearly ledger like A/S.
+    return balances.filter((balance) => !isWorkFromHomeBalance(balance));
   }, [profileQuery.data]);
-
-  const replacementBalance =
-    replacementBalanceQuery.data?.balance ??
-    profileQuery.data?.replacement_leave?.balance ??
-    null;
 
   const totalAbsences = profileQuery.data?.total_absences ?? 0;
 
@@ -454,27 +437,6 @@ export function SharedDashboard() {
                 </div>
               </div>
             ))}
-            <div
-              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-              title="Credits from Malaysian holidays worked expire after 30 days"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-800">
-                    Replacement Leave
-                  </p>
-                  <p className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
-                    {replacementBalanceQuery.isLoading && replacementBalance === null
-                      ? '—'
-                      : (replacementBalance ?? 0)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">Valid for 30 days</p>
-                </div>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600">
-                  <Wallet className="h-4 w-4" aria-hidden="true" />
-                </div>
-              </div>
-            </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

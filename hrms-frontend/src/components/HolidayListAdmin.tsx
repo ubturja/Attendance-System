@@ -56,7 +56,6 @@ function typeLabel(type: HolidayType | undefined): string {
 function invalidateHolidayCaches(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.holidays.all });
   void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
-  void queryClient.invalidateQueries({ queryKey: ['user', 'replacement-balance'] });
 }
 
 /**

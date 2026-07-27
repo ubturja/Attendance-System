@@ -46,11 +46,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/attendance', [AttendanceController::class, 'store']);
 
         // Profile + current-year leave balances + team roster for the dashboard.
-        // Also embeds holiday-for-date + compact 30-day replacement leave summary.
+        // Also embeds holiday-for-date for HK lockdown / MY Present-only UX.
         Route::get('/profile', [ProfileController::class, 'show']);
-
-        // 30-day rolling Replacement Leave balance (Malaysia holidays Present − R taken).
-        Route::get('/user/replacement-balance', [ProfileController::class, 'replacementBalance']);
 
         // Module 3 (read): active leave types for attendance dropdowns.
         Route::get('/leave-types', [LeaveTypeController::class, 'index']);

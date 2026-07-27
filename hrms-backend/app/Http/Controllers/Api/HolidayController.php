@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreHolidayRequest;
 use App\Http\Requests\Admin\UpdateHolidayRequest;
+use App\Models\AttendanceLog;
 use App\Models\Holiday;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,9 +75,25 @@ class HolidayController extends Controller
 
     /**
      * Soft-delete (archive) a holiday entry (Admin only).
+     *
+     * Malaysian holidays that already have attendance logs cannot be archived —
+     * those Present rows may have granted Replacement Leave credits that must be
+     * cleared first to keep the yearly ledger consistent.
      */
     public function destroy(Holiday $holiday): JsonResponse
     {
+        if ($holiday->type === 'malaysia') {
+            $hasAttendance = AttendanceLog::query()
+                ->whereDate('date', $holiday->date->toDateString())
+                ->exists();
+
+            if ($hasAttendance) {
+                return response()->json([
+                    'message' => 'Cannot delete holiday: Attendance records exist for this date. Clear the attendance first to reverse any granted leave credits.',
+                ], 422);
+            }
+        }
+
         $holiday->delete();
 
         return response()->json([

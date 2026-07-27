@@ -246,19 +246,6 @@ export type HolidayInput = {
   type: HolidayType;
 };
 
-/** 30-day rolling Replacement Leave balance (`GET /api/user/replacement-balance`). */
-export interface ReplacementLeaveBalance {
-  balance: number;
-  holidays_worked: number;
-  leaves_taken: number;
-  window_start: string;
-  window_end: string;
-  window_days: number;
-  holidays_worked_dates: string[];
-  leaves_taken_dates: string[];
-  oldest_valid_credit_date?: string | null;
-}
-
 /**
  * Fetches holidays ordered by date (`GET /api/holidays`).
  * Pass `includeTrashed: true` (Admin) to include soft-deleted rows via `?include_trashed=true`.
@@ -293,22 +280,6 @@ export async function deleteHoliday(id: number): Promise<void> {
 /** Restores a soft-deleted holiday (`POST /api/holidays/{id}/restore`, Admin only). */
 export async function restoreHoliday(id: number): Promise<Holiday> {
   const response = await api.post<ApiSuccessResponse<Holiday>>(`/holidays/${id}/restore`);
-  return response.data.data;
-}
-
-/**
- * 30-day rolling Replacement Leave balance for the authenticated user
- * (`GET /api/user/replacement-balance?date=`).
- */
-export async function getReplacementBalance(
-  date?: string,
-): Promise<ReplacementLeaveBalance> {
-  const response = await api.get<ApiSuccessResponse<ReplacementLeaveBalance>>(
-    '/user/replacement-balance',
-    {
-      params: date !== undefined && date !== '' ? { date } : undefined,
-    },
-  );
   return response.data.data;
 }
 

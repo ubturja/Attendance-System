@@ -16,7 +16,7 @@ use App\Models\UserYearlyLeaveRecord;
 use App\Services\Attendance\AttendanceValidationException;
 use App\Services\Attendance\AttendanceVariantMapper;
 use App\Services\Attendance\MappedAttendanceCode;
-use App\Services\Leave\ReplacementLeaveBalanceCalculator;
+use App\Services\Leave\ReplacementLeaveEarningSync;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -39,12 +39,14 @@ use Illuminate\Support\Facades\DB;
  *   3. Validate remaining_days will not drop below zero after cumulative deductions.
  *   4. Increment taken_days on user_yearly_leave_records (0.0 when the date is a weekend).
  *   5. Insert attendance_logs row with resolved leave_type_id.
+ *   6. On Malaysian holiday Present (`O`), increment Replacement Leave (`R`) assigned_days
+ *      (and reverse that credit when Present is cleared/changed).
  */
 class AttendanceController extends Controller
 {
     public function __construct(
         private readonly AttendanceVariantMapper $variantMapper,
-        private readonly ReplacementLeaveBalanceCalculator $replacementLeaveBalanceCalculator,
+        private readonly ReplacementLeaveEarningSync $replacementLeaveEarningSync,
     ) {}
 
     /**
@@ -89,10 +91,16 @@ class AttendanceController extends Controller
         $records = $request->validated('records');
 
         // Reject Hong Kong public holidays for every payload date (not only today()).
+        // Malaysian holidays accept Present (`O`) only (or empty clear).
         foreach ($records as $record) {
             $submissionDate = $record['date'] ?? now()->toDateString();
+            $submissionCode = isset($record['code']) ? (string) $record['code'] : null;
 
             if (($forbidden = $this->forbidIfHongKongHoliday($submissionDate)) !== null) {
+                return $forbidden;
+            }
+
+            if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($submissionDate, $submissionCode)) !== null) {
                 return $forbidden;
             }
         }
@@ -217,13 +225,14 @@ class AttendanceController extends Controller
      * Abort attendance writes when the target date is a Hong Kong public holiday.
      *
      * Evaluates the request/log date itself — not today() — so Admin corrections
-     * for past HK holidays are also blocked.
+     * for past HK holidays are also blocked. Soft-deleted HK holidays remain locked
+     * so archiving a holiday cannot reopen that date for attendance writes.
      */
     private function forbidIfHongKongHoliday(string $date): ?JsonResponse
     {
         $normalizedDate = Carbon::parse($date)->toDateString();
 
-        $isHongKongHoliday = Holiday::query()
+        $isHongKongHoliday = Holiday::withTrashed()
             ->whereDate('date', $normalizedDate)
             ->where('type', 'hong_kong')
             ->exists();
@@ -236,6 +245,36 @@ class AttendanceController extends Controller
             'success' => false,
             'message' => 'Attendance submission is disabled for Hong Kong public holidays.',
         ], 403);
+    }
+
+    /**
+     * Abort non-Present attendance writes on Malaysian public holidays.
+     *
+     * Present (`O`) is allowed so staff can earn Replacement Leave. Empty/null
+     * codes are treated as a clear attempt and are not blocked here.
+     */
+    private function forbidNonPresentOnMalaysianHoliday(string $date, ?string $code): ?JsonResponse
+    {
+        $normalizedDate = Carbon::parse($date)->toDateString();
+
+        $isMalaysianHoliday = Holiday::query()
+            ->whereDate('date', $normalizedDate)
+            ->where('type', 'malaysia')
+            ->exists();
+
+        if (! $isMalaysianHoliday) {
+            return null;
+        }
+
+        $normalizedCode = $code === null ? '' : strtoupper(trim($code));
+
+        if ($normalizedCode === '' || $normalizedCode === 'O') {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'Only "Present" can be submitted on a Malaysian Public Holiday.',
+        ], 422);
     }
 
     /**
@@ -308,13 +347,22 @@ class AttendanceController extends Controller
         }
 
         // Snap the employee's team at log time so later transfers do not rewrite history.
-        return AttendanceLog::query()->create([
+        $log = AttendanceLog::query()->create([
             'user_id' => $targetUser->id,
             'team_id' => $targetUser->team_id,
             'date' => $date,
             'submitted_code' => $newCode,
             'leave_type_id' => $mapped->leaveTypeId,
         ]);
+
+        $this->replacementLeaveEarningSync->syncAfterAttendanceChange(
+            userId: $userId,
+            date: $date,
+            previousCode: null,
+            newCode: $newCode,
+        );
+
+        return $log;
     }
 
     /**
@@ -363,22 +411,7 @@ class AttendanceController extends Controller
 
             $refundAmount = $this->ledgerDeductionForDate($oldMapped, $date);
 
-            if ($refundAmount <= 0.0) {
-                continue;
-            }
-
-            // Replacement Leave is rolling-window scoped — not yearly quota keyed.
-            if ($this->isReplacementLeave($oldMapped)) {
-                $balanceKey = $this->replacementBalanceKey($userId);
-                $pendingRefunds[$balanceKey] = round(
-                    ($pendingRefunds[$balanceKey] ?? 0.0) + $refundAmount,
-                    2,
-                );
-
-                continue;
-            }
-
-            if ($oldMapped->balanceLeaveTypeId === null) {
+            if ($refundAmount <= 0.0 || $oldMapped->balanceLeaveTypeId === null) {
                 continue;
             }
 
@@ -422,21 +455,13 @@ class AttendanceController extends Controller
             $refundAmount = $this->ledgerDeductionForDate($oldMapped, $date);
             $this->releaseBalance($oldMapped, $userId, $year, $date);
 
-            // Virtual pre-scan credit is now reflected — consume it from the right ledger bucket.
-            if ($refundAmount > 0.0) {
-                if ($this->isReplacementLeave($oldMapped)) {
-                    $balanceKey = $this->replacementBalanceKey($userId);
-                    $pendingRefunds[$balanceKey] = round(
-                        ($pendingRefunds[$balanceKey] ?? 0.0) - $refundAmount,
-                        2,
-                    );
-                } elseif ($oldMapped->balanceLeaveTypeId !== null) {
-                    $balanceKey = $this->balanceKey($userId, $oldMapped->balanceLeaveTypeId, $year);
-                    $pendingRefunds[$balanceKey] = round(
-                        ($pendingRefunds[$balanceKey] ?? 0.0) - $refundAmount,
-                        2,
-                    );
-                }
+            // Virtual pre-scan credit is now reflected on the yearly ledger bucket.
+            if ($refundAmount > 0.0 && $oldMapped->balanceLeaveTypeId !== null) {
+                $balanceKey = $this->balanceKey($userId, $oldMapped->balanceLeaveTypeId, $year);
+                $pendingRefunds[$balanceKey] = round(
+                    ($pendingRefunds[$balanceKey] ?? 0.0) - $refundAmount,
+                    2,
+                );
             }
         }
 
@@ -458,6 +483,13 @@ class AttendanceController extends Controller
         $existing->leave_type_id = $newMapped->leaveTypeId;
         $existing->save();
 
+        $this->replacementLeaveEarningSync->syncAfterAttendanceChange(
+            userId: $userId,
+            date: $date,
+            previousCode: $oldCode,
+            newCode: $newCode,
+        );
+
         return $existing;
     }
 
@@ -471,12 +503,15 @@ class AttendanceController extends Controller
     public function update(UpdateAttendanceRequest $request, AttendanceLog $attendanceLog): JsonResponse
     {
         $logDate = Carbon::parse($attendanceLog->date)->toDateString();
+        $newCode = strtoupper(trim($request->validated('code')));
 
         if (($forbidden = $this->forbidIfHongKongHoliday($logDate)) !== null) {
             return $forbidden;
         }
 
-        $newCode = strtoupper(trim($request->validated('code')));
+        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($logDate, $newCode)) !== null) {
+            return $forbidden;
+        }
 
         /** @var User $admin */
         $admin = $request->user();
@@ -518,6 +553,10 @@ class AttendanceController extends Controller
         $newCode = $request->attendanceCode();
 
         if (($forbidden = $this->forbidIfHongKongHoliday($date)) !== null) {
+            return $forbidden;
+        }
+
+        if (($forbidden = $this->forbidNonPresentOnMalaysianHoliday($date, $newCode)) !== null) {
             return $forbidden;
         }
 
@@ -571,6 +610,13 @@ class AttendanceController extends Controller
                     'leave_type_id' => $mapped->leaveTypeId,
                     'updated_by' => $admin->id,
                 ]);
+
+                $this->replacementLeaveEarningSync->syncAfterAttendanceChange(
+                    userId: $userId,
+                    date: $date,
+                    previousCode: null,
+                    newCode: $newCode,
+                );
 
                 return $log->fresh(['leaveType', 'editor']);
             });
@@ -638,6 +684,15 @@ class AttendanceController extends Controller
         $log->updated_by = $adminUserId;
         $log->save();
 
+        if ($oldCode !== $newCode) {
+            $this->replacementLeaveEarningSync->syncAfterAttendanceChange(
+                userId: (int) $log->user_id,
+                date: $log->date->toDateString(),
+                previousCode: $oldCode,
+                newCode: $newCode,
+            );
+        }
+
         return $log->fresh(['leaveType', 'editor']);
     }
 
@@ -704,12 +759,6 @@ class AttendanceController extends Controller
         int $year,
         string $date,
     ): void {
-        // Replacement Leave is derived from attendance_logs (rolling window) —
-        // never mutate user_yearly_leave_records for code R.
-        if ($this->isReplacementLeave($mapped)) {
-            return;
-        }
-
         $deduction = $this->ledgerDeductionForDate($mapped, $date);
 
         if ($deduction <= 0.0) {
@@ -764,11 +813,9 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Validate leave capacity and reserve the deduction.
+     * Validate leave capacity and reserve the deduction on user_yearly_leave_records.
      *
-     * Replacement Leave (`R`) uses the 30-day rolling balance and never touches
-     * user_yearly_leave_records. All other quota-based codes use the yearly ledger.
-     *
+     * Applies to all quota-based codes including Replacement Leave (`R`).
      * Batch math credits $pendingRefunds (code changes that free quota later/earlier
      * in the same transaction) so net-zero swaps are not rejected.
      *
@@ -791,18 +838,6 @@ class AttendanceController extends Controller
 
         // Weekend (or zero-charge) leave: accept the attendance log, skip ledger math.
         if ($deduction <= 0.0) {
-            return;
-        }
-
-        if ($this->isReplacementLeave($mapped)) {
-            $this->validateAndReserveReplacementLeave(
-                userId: $userId,
-                date: $date,
-                deduction: $deduction,
-                pendingDeductions: $pendingDeductions,
-                pendingRefunds: $pendingRefunds,
-            );
-
             return;
         }
 
@@ -842,50 +877,5 @@ class AttendanceController extends Controller
 
         $balanceRecord->taken_days = round((float) $balanceRecord->taken_days + $deduction, 2);
         $balanceRecord->save();
-    }
-
-    /**
-     * Enforce 30-day rolling Replacement Leave capacity (no yearly quota mutation).
-     *
-     * @param  array<string, float>  $pendingDeductions
-     * @param  array<string, float>  $pendingRefunds
-     *
-     * @throws AttendanceValidationException
-     */
-    private function validateAndReserveReplacementLeave(
-        int $userId,
-        string $date,
-        float $deduction,
-        array &$pendingDeductions,
-        array &$pendingRefunds,
-    ): void {
-        $balanceKey = $this->replacementBalanceKey($userId);
-        $rolling = $this->replacementLeaveBalanceCalculator->forUser($userId, $date);
-        $currentBalance = (float) $rolling['balance'];
-        $alreadyPending = $pendingDeductions[$balanceKey] ?? 0.0;
-        $alreadyRefunded = $pendingRefunds[$balanceKey] ?? 0.0;
-        $effectiveBalance = round($currentBalance + $alreadyRefunded - $alreadyPending, 2);
-
-        if ($effectiveBalance <= 0.0 || $effectiveBalance < $deduction) {
-            throw AttendanceValidationException::insufficientReplacementLeaveBalance(
-                userId: $userId,
-                date: $date,
-                balance: $effectiveBalance,
-            );
-        }
-
-        // Track in-batch consumption only — persistence is the attendance_logs row itself.
-        $pendingDeductions[$balanceKey] = round($alreadyPending + $deduction, 2);
-    }
-
-    private function isReplacementLeave(MappedAttendanceCode $mapped): bool
-    {
-        return $mapped->submittedCode === ReplacementLeaveBalanceCalculator::REPLACEMENT_LEAVE_CODE
-            || $mapped->parentCode === ReplacementLeaveBalanceCalculator::REPLACEMENT_LEAVE_CODE;
-    }
-
-    private function replacementBalanceKey(int $userId): string
-    {
-        return "replacement:{$userId}";
     }
 }

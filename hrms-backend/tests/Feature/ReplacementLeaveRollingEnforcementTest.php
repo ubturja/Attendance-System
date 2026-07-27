@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AttendanceLog;
 use App\Models\Holiday;
 use App\Models\LeaveType;
 use App\Models\Team;
@@ -31,87 +30,70 @@ class ReplacementLeaveRollingEnforcementTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_r_submission_succeeds_with_rolling_credit_and_skips_yearly_quota(): void
+    public function test_r_submission_succeeds_when_yearly_assigned_days_remain(): void
     {
         [$employee, $leaveTypeR] = $this->seedEmployee();
 
-        // No yearly allocation row for R — must still succeed via rolling balance.
+        // Credit earned via Present on a Malaysian holiday (Step 1 sync).
         Holiday::query()->create([
             'name' => 'Malaysia Holiday',
-            'date' => '2026-07-10',
+            'date' => '2026-07-24',
             'type' => 'malaysia',
-        ]);
-        AttendanceLog::query()->create([
-            'user_id' => $employee->id,
-            'team_id' => $employee->team_id,
-            'date' => '2026-07-10',
-            'submitted_code' => 'O',
-            'leave_type_id' => null,
         ]);
 
         Sanctum::actingAs($employee);
+
+        $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => '2026-07-24',
+                    'code' => 'O',
+                ],
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('user_yearly_leave_records', [
+            'user_id' => $employee->id,
+            'leave_type_id' => $leaveTypeR->id,
+            'year' => 2026,
+            'assigned_days' => 1.0,
+            'taken_days' => 0.0,
+        ]);
+
+        // Take Replacement Leave on a later weekday against the yearly ledger.
+        Carbon::setTestNow(Carbon::parse('2026-07-27'));
 
         $response = $this->postJson('/api/attendance', [
             'records' => [
                 [
                     'user_id' => $employee->id,
-                    'date' => '2026-07-24',
+                    'date' => '2026-07-27',
                     'code' => 'R',
                 ],
             ],
         ]);
 
         $response->assertCreated();
-        $this->assertTrue(
-            AttendanceLog::query()
-                ->where('user_id', $employee->id)
-                ->whereDate('date', '2026-07-24')
-                ->where('submitted_code', 'R')
-                ->where('leave_type_id', $leaveTypeR->id)
-                ->exists(),
-        );
-        $this->assertDatabaseCount('user_yearly_leave_records', 0);
-    }
-
-    public function test_r_submission_rejected_when_rolling_balance_is_zero(): void
-    {
-        [$employee] = $this->seedEmployee();
-
-        Sanctum::actingAs($employee);
-
-        $response = $this->postJson('/api/attendance', [
-            'records' => [
-                [
-                    'user_id' => $employee->id,
-                    'date' => '2026-07-24',
-                    'code' => 'R',
-                ],
-            ],
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJson([
-            'success' => false,
-            'message' => 'Insufficient Replacement Leave balance or credits have expired.',
-        ]);
-        $this->assertDatabaseCount('attendance_logs', 0);
-    }
-
-    public function test_r_submission_rejected_when_only_expired_credit_exists(): void
-    {
-        [$employee] = $this->seedEmployee();
-
-        Holiday::query()->create([
-            'name' => 'Expired Malaysia Holiday',
-            'date' => '2026-06-20',
-            'type' => 'malaysia',
-        ]);
-        AttendanceLog::query()->create([
+        $this->assertDatabaseHas('user_yearly_leave_records', [
             'user_id' => $employee->id,
-            'team_id' => $employee->team_id,
-            'date' => '2026-06-20',
-            'submitted_code' => 'O',
-            'leave_type_id' => null,
+            'leave_type_id' => $leaveTypeR->id,
+            'year' => 2026,
+            'assigned_days' => 1.0,
+            'taken_days' => 1.0,
+        ]);
+    }
+
+    public function test_r_submission_rejected_when_yearly_remaining_is_zero(): void
+    {
+        [$employee, $leaveTypeR] = $this->seedEmployee();
+
+        UserYearlyLeaveRecord::factory()->create([
+            'user_id' => $employee->id,
+            'leave_type_id' => $leaveTypeR->id,
+            'year' => 2026,
+            'assigned_days' => 0.0,
+            'taken_days' => 0.0,
         ]);
 
         Sanctum::actingAs($employee);
@@ -127,10 +109,35 @@ class ReplacementLeaveRollingEnforcementTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath(
-            'message',
-            'Insufficient Replacement Leave balance or credits have expired.',
-        );
+        $this->assertStringContainsString('Insufficient leave balance', (string) $response->json('message'));
+        $this->assertDatabaseCount('attendance_logs', 0);
+        $this->assertDatabaseHas('user_yearly_leave_records', [
+            'user_id' => $employee->id,
+            'leave_type_id' => $leaveTypeR->id,
+            'taken_days' => 0.0,
+        ]);
+    }
+
+    public function test_r_submission_rejected_when_no_yearly_allocation_row_exists(): void
+    {
+        [$employee] = $this->seedEmployee();
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => '2026-07-24',
+                    'code' => 'R',
+                ],
+            ],
+        ]);
+
+        // Same path as Annual/Sick — missing yearly row is not a rolling credit.
+        $response->assertStatus(404);
+        $this->assertStringContainsString('No leave allocation found', (string) $response->json('message'));
+        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
     public function test_annual_leave_still_uses_yearly_ledger(): void
@@ -168,8 +175,7 @@ class ReplacementLeaveRollingEnforcementTest extends TestCase
             'taken_days' => 1.0,
         ]);
 
-        // Second annual day must fail on yearly remaining (not rolling).
-        // Use a weekday — weekends charge 0.0 against the yearly ledger.
+        // Second annual day must fail on yearly remaining.
         Carbon::setTestNow(Carbon::parse('2026-07-27'));
 
         $denied = $this->postJson('/api/attendance', [

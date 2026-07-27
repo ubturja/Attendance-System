@@ -168,9 +168,8 @@ export default function Calendar() {
 
   function invalidateHolidays() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.holidays.all });
-    // Dashboard holiday lockdown + rolling RL balance depend on holiday rows.
+    // Dashboard holiday lockdown + leave balances depend on holiday rows.
     void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
-    void queryClient.invalidateQueries({ queryKey: ['user', 'replacement-balance'] });
   }
 
   function resetForm() {

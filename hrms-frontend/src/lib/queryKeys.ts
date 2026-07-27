@@ -30,8 +30,6 @@ export const queryKeys = {
     /** Admin list including soft-deleted rows (`GET /holidays?include_trashed=true`). */
     admin: ['holidays', 'admin'] as const,
   },
-  /** 30-day rolling Replacement Leave balance (`GET /user/replacement-balance?date=`). */
-  replacementBalance: (date: string) => ['user', 'replacement-balance', date] as const,
   reports: {
     all: ['reports'] as const,
     yearly: (year: number, teamId: string) =>
@@ -62,7 +60,6 @@ export function invalidateAttendanceRelatedQueries(queryClient: QueryClient): vo
   void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
   void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
   void queryClient.invalidateQueries({ queryKey: queryKeys.users.balancesRoot });
-  void queryClient.invalidateQueries({ queryKey: ['user', 'replacement-balance'] });
 }
 
 /** Alias used by leave-allocation and user mutations — same as {@link invalidateAttendanceRelatedQueries}. */

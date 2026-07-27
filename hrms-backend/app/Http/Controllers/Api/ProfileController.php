@@ -8,7 +8,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Holiday;
 use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
-use App\Services\Leave\ReplacementLeaveBalanceCalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,10 +22,6 @@ use Illuminate\Http\Request;
  */
 class ProfileController extends Controller
 {
-    public function __construct(
-        private readonly ReplacementLeaveBalanceCalculator $replacementLeaveBalanceCalculator,
-    ) {}
-
     /**
      * Return the authenticated user's profile, current-year leave balances,
      * calculated total absences, and team-scoped colleague roster with
@@ -38,14 +33,14 @@ class ProfileController extends Controller
      * Scoping logic:
      * 1. Identity is resolved exclusively from the Bearer token ($request->user()).
      *    No route parameter can substitute another user's ID — prevents IDOR.
-     * 2. leave_balances are loaded for the current calendar year with leaveType.
+     * 2. leave_balances are loaded for the current calendar year with leaveType
+     *    (including Replacement Leave from user_yearly_leave_records).
      * 3. total_absences is the sum of taken_days across those balance rows
      *    (fractional codes like AO/OA are already reflected in taken_days).
      * 4. team.users loads ONLY colleagues sharing the same team_id FK (ERD 1:M),
      *    with attendance_logs eager-loaded for the requested $date only.
      * 5. holiday is the calendar entry for the requested date (null when none),
      *    including type (malaysia | hong_kong) for dashboard holiday awareness.
-     * 6. replacement_leave is a compact 30-day rolling balance summary.
      *
      * JSON response (200) data shape (key fields):
      * {
@@ -56,8 +51,7 @@ class ProfileController extends Controller
      *   "leave_balances": [ { "leave_type_id": 1, "assigned_days": 14, "taken_days": 2, ... } ],
      *   "total_absences": 2.0,
      *   "yearly_leave_records": [ ... ], // same as leave_balances for existing SPA clients
-     *   "holiday": { "id": 1, "name": "...", "date": "...", "type": "malaysia" } | null,
-     *   "replacement_leave": { "balance": 1, "holidays_worked": 2, "leaves_taken": 1, ... }
+     *   "holiday": { "id": 1, "name": "...", "date": "...", "type": "malaysia" } | null
      * }
      */
     public function show(Request $request): JsonResponse
@@ -113,37 +107,11 @@ class ProfileController extends Controller
         $payload['yearly_leave_records'] = $leaveBalances;
         // Daily dashboard holiday check: null when the selected date is not a holiday.
         $payload['holiday'] = Holiday::query()->whereDate('date', $date)->first();
-        $payload['replacement_leave'] = $this->replacementLeaveBalanceCalculator->forUser($user->id, $date);
 
         return response()->json([
             'success' => true,
             'message' => 'Profile retrieved successfully.',
             'data' => $payload,
-        ], 200);
-    }
-
-    /**
-     * 30-day rolling Replacement Leave balance for the authenticated user.
-     *
-     * Query: ?date=YYYY-MM-DD (defaults to today) — as-of date for the window end.
-     * Identity is always $request->user(); no user_id parameter (prevents IDOR).
-     */
-    public function replacementBalance(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'date' => ['nullable', 'date_format:Y-m-d'],
-        ]);
-
-        /** @var User $user */
-        $user = $request->user();
-        $asOf = $validated['date'] ?? now()->toDateString();
-
-        $balance = $this->replacementLeaveBalanceCalculator->forUser($user->id, $asOf);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Replacement leave balance retrieved successfully.',
-            'data' => $balance,
         ], 200);
     }
 }

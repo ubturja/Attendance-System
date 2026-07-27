@@ -153,4 +153,33 @@ class HongKongHolidayAttendanceLockdownTest extends TestCase
             'submitted_code' => 'O',
         ]);
     }
+
+    public function test_soft_deleted_hong_kong_holiday_still_blocks_attendance_writes(): void
+    {
+        $team = Team::factory()->create();
+        $admin = User::factory()->admin()->forTeam($team)->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+
+        $holiday = Holiday::query()->create([
+            'name' => 'Archived HK Holiday',
+            'date' => '2026-07-10',
+            'type' => 'hong_kong',
+        ]);
+        $holiday->delete();
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->postJson('/api/admin/reports/daily/update', [
+            'user_id' => $employee->id,
+            'date' => '2026-07-10',
+            'code' => 'O',
+        ]);
+
+        $response->assertForbidden();
+        $response->assertJson([
+            'success' => false,
+            'message' => 'Attendance submission is disabled for Hong Kong public holidays.',
+        ]);
+        $this->assertDatabaseCount('attendance_logs', 0);
+    }
 }

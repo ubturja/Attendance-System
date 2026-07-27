@@ -132,7 +132,7 @@ class ReplacementLeaveEarningSyncTest extends TestCase
         ]);
     }
 
-    public function test_admin_create_credits_assigned_days_and_rejects_non_present_on_malaysia_holiday(): void
+    public function test_admin_create_credits_assigned_days_and_can_clear_to_reverse(): void
     {
         [$employee, $leaveTypeR] = $this->seedEmployeeWithReplacementLeave();
         $admin = User::factory()->admin()->forTeam($employee->team)->create();
@@ -163,23 +163,18 @@ class ReplacementLeaveEarningSyncTest extends TestCase
             ->whereDate('date', '2026-07-10')
             ->firstOrFail();
 
-        $response = $this->putJson("/api/attendance/{$log->id}", [
+        $this->putJson("/api/attendance/{$log->id}", [
             'code' => 'X',
-        ]);
+        ])->assertOk();
 
-        $response->assertStatus(422);
-        $response->assertJsonPath(
-            'message',
-            'Only "Present" can be submitted on a Malaysian Public Holiday.',
-        );
         $this->assertDatabaseHas('attendance_logs', [
             'id' => $log->id,
-            'submitted_code' => 'O',
+            'submitted_code' => 'X',
         ]);
         $this->assertDatabaseHas('user_yearly_leave_records', [
             'user_id' => $employee->id,
             'leave_type_id' => $leaveTypeR->id,
-            'assigned_days' => 1.0,
+            'assigned_days' => 0.0,
         ]);
     }
 

@@ -227,8 +227,8 @@ export function SharedDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const todayDate = getTodayDateString();
   const selectedDate = searchParams.get('date') || todayDate;
-  const isViewingToday = selectedDate === todayDate;
-  const isNotToday = !isViewingToday;
+  const isToday = selectedDate === todayDate;
+  const isNotToday = !isToday;
 
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [selectionsDirty, setSelectionsDirty] = useState(false);
@@ -252,9 +252,12 @@ export function SharedDashboard() {
   const teamMembers = profileQuery.data?.team?.users ?? [];
   const teamName = profileQuery.data?.team?.team_name ?? 'your team';
   const currentUserId = profileQuery.data?.id;
+  const isAdmin = profileQuery.data?.job_title === 'Admin';
   const selectedHoliday = profileQuery.data?.holiday ?? null;
   const isHongKongHoliday = selectedHoliday?.type === 'hong_kong';
   const isMalaysianHoliday = selectedHoliday?.type === 'malaysia';
+  // Employees may only un-submit MY holiday Present on the same day; Admins bypass.
+  const isMalaysianClearDisabled = isMalaysianHoliday && !isAdmin && !isToday;
   const hasExistingAttendance = teamMembers.some(
     (member) => (member.attendance_logs?.length ?? 0) > 0,
   );
@@ -262,9 +265,15 @@ export function SharedDashboard() {
   const attendanceOptions = useMemo(() => {
     const options = buildAttendanceOptions(leaveTypesQuery.data ?? []);
 
-    // Malaysian holidays: only Present (O) may be submitted (blank default stays in the select).
+    // Malaysian holidays: Present (O) + Clear (X) for same-day un-choose; other codes hidden.
     if (isMalaysianHoliday) {
-      return options.filter((option) => option.value === 'O');
+      const present =
+        options.find((option) => option.value === 'O') ?? {
+          label: 'Present',
+          value: 'O',
+        };
+
+      return [present, { label: 'Clear Selection', value: 'X' }];
     }
 
     return options;
@@ -300,6 +309,30 @@ export function SharedDashboard() {
     }
   }, [teamMembers, selectedDate, selectionsDirty]);
 
+  // Malaysian holidays only allow Present (O) or Clear (X). Reset stale codes carried
+  // from another date so a prior Annual Leave (etc.) selection cannot remain or submit.
+  useEffect(() => {
+    if (!isMalaysianHoliday) {
+      return;
+    }
+
+    setSelections((previous) => {
+      let changed = false;
+      const next: Record<number, string> = {};
+
+      for (const [memberId, code] of Object.entries(previous)) {
+        if (code !== '' && code !== 'O' && code !== 'X') {
+          next[Number(memberId)] = '';
+          changed = true;
+        } else {
+          next[Number(memberId)] = code;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }, [isMalaysianHoliday, selectedDate]);
+
   const submitAttendanceMutation = useMutation({
     mutationFn: submitAttendance,
     onSuccess: () => {
@@ -329,7 +362,7 @@ export function SharedDashboard() {
     return code !== undefined && code !== '';
   });
   const canSubmitAttendance =
-    isViewingToday &&
+    isToday &&
     !isHongKongHoliday &&
     !isPageLoading &&
     !isPageError &&
@@ -362,7 +395,7 @@ export function SharedDashboard() {
     setSubmitError(undefined);
     setSubmitSuccess(undefined);
 
-    if (!isViewingToday) {
+    if (!isToday) {
       setSubmitError(
         'You can only submit or update attendance for today. Contact your Admin for past changes.',
       );
@@ -465,7 +498,7 @@ export function SharedDashboard() {
             <p className="mt-1 text-sm text-slate-500">
               {isHongKongHoliday
                 ? 'Attendance submission is disabled on Hong Kong public holidays.'
-                : isViewingToday
+                : isToday
                   ? `Select an attendance code for yourself and each ${teamName} member.`
                   : `Viewing attendance for ${selectedDate}. Past days are read-only — contact your Admin for changes.`}
             </p>
@@ -558,7 +591,13 @@ export function SharedDashboard() {
                               Mark Attendance
                             </option>
                             {attendanceOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={
+                                  option.value === 'X' && isMalaysianClearDisabled
+                                }
+                              >
                                 {option.label}
                               </option>
                             ))}

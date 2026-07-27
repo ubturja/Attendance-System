@@ -60,10 +60,36 @@ class HolidayController extends Controller
 
     /**
      * Update an existing holiday entry (Admin only).
+     *
+     * Malaysian holidays that already have attendance logs cannot change date or
+     * type — Present rows on the original date may have granted Replacement Leave
+     * credits that would be orphaned if the holiday identity moved.
      */
     public function update(UpdateHolidayRequest $request, Holiday $holiday): JsonResponse
     {
-        $holiday->fill($request->validated());
+        $data = $request->validated();
+
+        if ($holiday->type === 'malaysia') {
+            $originalDate = $holiday->date->toDateString();
+            $dateChanging = array_key_exists('date', $data)
+                && \Illuminate\Support\Carbon::parse($data['date'])->toDateString() !== $originalDate;
+            $typeChanging = array_key_exists('type', $data)
+                && $data['type'] !== $holiday->type;
+
+            if ($dateChanging || $typeChanging) {
+                $hasAttendance = AttendanceLog::query()
+                    ->whereDate('date', $originalDate)
+                    ->exists();
+
+                if ($hasAttendance) {
+                    return response()->json([
+                        'message' => 'Cannot change date or type of a Malaysian holiday that already has attendance records. Clear the attendance first.',
+                    ], 422);
+                }
+            }
+        }
+
+        $holiday->fill($data);
         $holiday->save();
 
         return response()->json([
@@ -107,10 +133,28 @@ class HolidayController extends Controller
      * Restore a soft-deleted holiday (Admin only).
      *
      * Clears deleted_at so the holiday reappears in the default calendar list.
+     * Malaysian holidays cannot be restored while non-Present attendance exists
+     * on that date — those codes would conflict with an active Malaysia holiday.
      */
     public function restore(int $id): JsonResponse
     {
         $holiday = Holiday::withTrashed()->findOrFail($id);
+
+        if ($holiday->type === 'malaysia') {
+            $hasConflictingAttendance = AttendanceLog::query()
+                ->whereDate('date', $holiday->date->toDateString())
+                ->whereNotNull('submitted_code')
+                ->where('submitted_code', '!=', '')
+                ->where('submitted_code', '!=', 'O')
+                ->exists();
+
+            if ($hasConflictingAttendance) {
+                return response()->json([
+                    'message' => 'Cannot restore Malaysian holiday: Conflicting non-Present attendance exists on this date. Clear those records first.',
+                ], 422);
+            }
+        }
+
         $holiday->restore();
 
         return response()->json([

@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\StoreHolidayRequest;
 use App\Http\Requests\Admin\UpdateHolidayRequest;
 use App\Models\AttendanceLog;
 use App\Models\Holiday;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -46,10 +47,27 @@ class HolidayController extends Controller
 
     /**
      * Create a new holiday entry (Admin only).
+     *
+     * Malaysian holidays cannot be created on a date that already has attendance —
+     * Present rows would otherwise receive Replacement Leave credits after the fact.
      */
     public function store(StoreHolidayRequest $request): JsonResponse
     {
-        $holiday = Holiday::query()->create($request->validated());
+        $data = $request->validated();
+
+        if (($data['type'] ?? null) === 'malaysia') {
+            $hasAttendance = AttendanceLog::query()
+                ->whereDate('date', $data['date'])
+                ->exists();
+
+            if ($hasAttendance) {
+                return response()->json([
+                    'message' => 'Cannot create a Malaysian holiday on a date that already has attendance records. Clear them first.',
+                ], 422);
+            }
+        }
+
+        $holiday = Holiday::query()->create($data);
 
         return response()->json([
             'success' => true,
@@ -61,31 +79,29 @@ class HolidayController extends Controller
     /**
      * Update an existing holiday entry (Admin only).
      *
-     * Malaysian holidays that already have attendance logs cannot change date or
-     * type — Present rows on the original date may have granted Replacement Leave
-     * credits that would be orphaned if the holiday identity moved.
+     * Date and type are locked when attendance already exists on the original
+     * holiday date — Admin must clear those logs via Daily Report first so any
+     * Replacement Leave credits reverse safely before the calendar changes.
      */
     public function update(UpdateHolidayRequest $request, Holiday $holiday): JsonResponse
     {
         $data = $request->validated();
 
-        if ($holiday->type === 'malaysia') {
-            $originalDate = $holiday->date->toDateString();
-            $dateChanging = array_key_exists('date', $data)
-                && \Illuminate\Support\Carbon::parse($data['date'])->toDateString() !== $originalDate;
-            $typeChanging = array_key_exists('type', $data)
-                && $data['type'] !== $holiday->type;
+        $originalDate = $holiday->date->toDateString();
+        $dateChanging = array_key_exists('date', $data)
+            && $originalDate !== Carbon::parse($data['date'])->toDateString();
+        $typeChanging = array_key_exists('type', $data)
+            && $data['type'] !== $holiday->type;
 
-            if ($dateChanging || $typeChanging) {
-                $hasAttendance = AttendanceLog::query()
-                    ->whereDate('date', $originalDate)
-                    ->exists();
+        if ($dateChanging || $typeChanging) {
+            $hasAttendance = AttendanceLog::query()
+                ->whereDate('date', $originalDate)
+                ->exists();
 
-                if ($hasAttendance) {
-                    return response()->json([
-                        'message' => 'Cannot change date or type of a Malaysian holiday that already has attendance records. Clear the attendance first.',
-                    ], 422);
-                }
+            if ($hasAttendance) {
+                return response()->json([
+                    'message' => 'Cannot change the date or type of a holiday that already has attendance records. Please use the Daily Report to clear the attendance first.',
+                ], 422);
             }
         }
 
@@ -101,25 +117,9 @@ class HolidayController extends Controller
 
     /**
      * Soft-delete (archive) a holiday entry (Admin only).
-     *
-     * Malaysian holidays that already have attendance logs cannot be archived —
-     * those Present rows may have granted Replacement Leave credits that must be
-     * cleared first to keep the yearly ledger consistent.
      */
     public function destroy(Holiday $holiday): JsonResponse
     {
-        if ($holiday->type === 'malaysia') {
-            $hasAttendance = AttendanceLog::query()
-                ->whereDate('date', $holiday->date->toDateString())
-                ->exists();
-
-            if ($hasAttendance) {
-                return response()->json([
-                    'message' => 'Cannot delete holiday: Attendance records exist for this date. Clear the attendance first to reverse any granted leave credits.',
-                ], 422);
-            }
-        }
-
         $holiday->delete();
 
         return response()->json([
@@ -133,24 +133,24 @@ class HolidayController extends Controller
      * Restore a soft-deleted holiday (Admin only).
      *
      * Clears deleted_at so the holiday reappears in the default calendar list.
-     * Malaysian holidays cannot be restored while non-Present attendance exists
-     * on that date — those codes would conflict with an active Malaysia holiday.
+     * Malaysian holidays cannot be restored while any attendance exists on that
+     * date — including Present rows created while trashed, which would bypass
+     * ledger sync and corrupt credits on later reversal.
      */
     public function restore(int $id): JsonResponse
     {
         $holiday = Holiday::withTrashed()->findOrFail($id);
 
         if ($holiday->type === 'malaysia') {
-            $hasConflictingAttendance = AttendanceLog::query()
+            $hasAttendance = AttendanceLog::query()
                 ->whereDate('date', $holiday->date->toDateString())
                 ->whereNotNull('submitted_code')
                 ->where('submitted_code', '!=', '')
-                ->where('submitted_code', '!=', 'O')
                 ->exists();
 
-            if ($hasConflictingAttendance) {
+            if ($hasAttendance) {
                 return response()->json([
-                    'message' => 'Cannot restore Malaysian holiday: Conflicting non-Present attendance exists on this date. Clear those records first.',
+                    'message' => 'Cannot restore Malaysian holiday: Attendance records exist on this date. Clear them first to ensure ledger integrity.',
                 ], 422);
             }
         }

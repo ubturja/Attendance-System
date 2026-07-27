@@ -87,7 +87,7 @@ class HongKongHolidayAttendanceLockdownTest extends TestCase
         $this->assertDatabaseCount('attendance_logs', 1);
     }
 
-    public function test_admin_daily_update_rejects_past_hong_kong_holiday_date(): void
+    public function test_admin_daily_update_allows_past_hong_kong_holiday_date(): void
     {
         $team = Team::factory()->create();
         $admin = User::factory()->admin()->forTeam($team)->create();
@@ -107,15 +107,14 @@ class HongKongHolidayAttendanceLockdownTest extends TestCase
             'code' => 'O',
         ]);
 
-        $response->assertForbidden();
-        $response->assertJson([
-            'success' => false,
-            'message' => 'Attendance submission is disabled for Hong Kong public holidays.',
+        $response->assertOk();
+        $this->assertDatabaseHas('attendance_logs', [
+            'user_id' => $employee->id,
+            'submitted_code' => 'O',
         ]);
-        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
-    public function test_admin_update_existing_log_rejects_hong_kong_holiday_date(): void
+    public function test_admin_update_existing_log_allows_hong_kong_holiday_date(): void
     {
         $team = Team::factory()->create();
         $admin = User::factory()->admin()->forTeam($team)->create();
@@ -142,19 +141,46 @@ class HongKongHolidayAttendanceLockdownTest extends TestCase
             'code' => 'X',
         ]);
 
+        $response->assertOk();
+        $this->assertDatabaseHas('attendance_logs', [
+            'id' => $log->id,
+            'submitted_code' => 'X',
+        ]);
+    }
+
+    public function test_soft_deleted_hong_kong_holiday_still_blocks_employee_writes(): void
+    {
+        $team = Team::factory()->create();
+        $employee = User::factory()->employee()->forTeam($team)->create();
+
+        $holiday = Holiday::query()->create([
+            'name' => 'Archived HK Holiday',
+            'date' => '2026-07-24',
+            'type' => 'hong_kong',
+        ]);
+        $holiday->delete();
+
+        Sanctum::actingAs($employee);
+
+        $response = $this->postJson('/api/attendance', [
+            'records' => [
+                [
+                    'user_id' => $employee->id,
+                    'date' => '2026-07-24',
+                    'code' => 'O',
+                ],
+            ],
+        ]);
+
         $response->assertForbidden();
         $response->assertJson([
             'success' => false,
             'message' => 'Attendance submission is disabled for Hong Kong public holidays.',
         ]);
-
-        $this->assertDatabaseHas('attendance_logs', [
-            'id' => $log->id,
-            'submitted_code' => 'O',
-        ]);
+        $this->assertDatabaseCount('attendance_logs', 0);
     }
 
-    public function test_soft_deleted_hong_kong_holiday_still_blocks_attendance_writes(): void
+    public function test_admin_daily_update_allows_soft_deleted_hong_kong_holiday_date(): void
     {
         $team = Team::factory()->create();
         $admin = User::factory()->admin()->forTeam($team)->create();
@@ -175,11 +201,10 @@ class HongKongHolidayAttendanceLockdownTest extends TestCase
             'code' => 'O',
         ]);
 
-        $response->assertForbidden();
-        $response->assertJson([
-            'success' => false,
-            'message' => 'Attendance submission is disabled for Hong Kong public holidays.',
+        $response->assertOk();
+        $this->assertDatabaseHas('attendance_logs', [
+            'user_id' => $employee->id,
+            'submitted_code' => 'O',
         ]);
-        $this->assertDatabaseCount('attendance_logs', 0);
     }
 }

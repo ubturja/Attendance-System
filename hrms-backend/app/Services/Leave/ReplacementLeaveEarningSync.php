@@ -17,7 +17,8 @@ use Illuminate\Validation\ValidationException;
  * increments by 1 for that calendar year. Changing away from Present reverses the credit.
  *
  * Runs inside the attendance write transaction so ledger and attendance_logs stay atomic.
- * Reversal is blocked when the credit has already been consumed (taken_days).
+ * Reversal is blocked for non-Admins when the credit has already been consumed (taken_days).
+ * Admins may force the reversal, which can leave remaining balance negative.
  */
 class ReplacementLeaveEarningSync
 {
@@ -114,7 +115,9 @@ class ReplacementLeaveEarningSync
         $takenDays = (float) $record->taken_days;
 
         // Ledger integrity: never revoke a credit that has already been consumed as R.
-        if ($nextAssigned < $takenDays) {
+        // Admins may force the reversal (remaining balance can go negative).
+        $isAdmin = auth()->check() && auth()->user()?->job_title === 'Admin';
+        if ($nextAssigned < $takenDays && ! $isAdmin) {
             throw ValidationException::withMessages([
                 'attendance' => 'Cannot change attendance: The earned Replacement Leave for this day has already been consumed.',
             ]);

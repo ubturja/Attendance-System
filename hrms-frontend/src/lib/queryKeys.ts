@@ -27,6 +27,8 @@ export const queryKeys = {
   profileByDate: (date: string) => ['profile', 'by-date', date] as const,
   holidays: {
     all: ['holidays'] as const,
+    /** Admin list including soft-deleted rows (`GET /holidays?include_trashed=true`). */
+    admin: ['holidays', 'admin'] as const,
   },
   /** 30-day rolling Replacement Leave balance (`GET /user/replacement-balance?date=`). */
   replacementBalance: (date: string) => ['user', 'replacement-balance', date] as const,

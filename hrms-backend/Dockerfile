@@ -35,7 +35,7 @@ RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/fra
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # 10. Install Laravel dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install --optimize-autoloader --no-interaction
 
 # 11. Run optimizations and turn on the server
 CMD php artisan config:cache && php artisan route:cache && apache2-foreground

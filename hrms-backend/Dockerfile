@@ -1,5 +1,5 @@
 # 1. Use the official PHP image with an Apache web server
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 # 2. Install system dependencies and Postgres extensions
 RUN apt-get update && apt-get install -y \

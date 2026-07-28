@@ -36,7 +36,7 @@ function isHolidayDeleted(holiday: Holiday): boolean {
 }
 
 function formatHolidayDate(isoDate: string): string {
-  const parsed = new Date(`${isoDate.slice(0, 10)}T00:00:00`);
+  const parsed = new Date(`${isoDate}T00:00:00`);
 
   if (Number.isNaN(parsed.getTime())) {
     return isoDate;
@@ -55,6 +55,7 @@ function typeLabel(type: HolidayType | undefined): string {
 
 function invalidateHolidayCaches(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.holidays.all });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.holidays.admin });
   void queryClient.invalidateQueries({ queryKey: queryKeys.profile });
 }
 

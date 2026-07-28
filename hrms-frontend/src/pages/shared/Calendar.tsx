@@ -39,7 +39,7 @@ const DEFAULT_HOLIDAY_TYPE: HolidayType = 'malaysia';
 
 /** Parses an API date (`YYYY-MM-DD`) as a local calendar day. */
 function parseHolidayDate(isoDate: string): Date {
-  return new Date(`${isoDate.slice(0, 10)}T00:00:00`);
+  return new Date(`${isoDate}T00:00:00`);
 }
 
 /** Formats an ISO date string (YYYY-MM-DD) for display without hardcoding. */
@@ -58,9 +58,9 @@ function formatHolidayDate(isoDate: string): string {
   }).format(parsed);
 }
 
-/** Normalizes API dates to `YYYY-MM-DD` for `<input type="date">`. */
+/** API holiday dates are already `YYYY-MM-DD` — pass through for `<input type="date">`. */
 function toDateInputValue(isoDate: string): string {
-  return isoDate.slice(0, 10);
+  return isoDate;
 }
 
 function holidayPillClassName(type: HolidayType | undefined): string {

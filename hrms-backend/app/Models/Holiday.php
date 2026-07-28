@@ -44,6 +44,15 @@ class Holiday extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'date' => 'date',
+        'date' => 'date:Y-m-d', // Forces JSON serialization to output exactly YYYY-MM-DD
     ];
+
+    /**
+     * Serialize all date fields as calendar dates (no UTC time component).
+     * Prevents timezone off-by-one when clients parse holiday dates as midnights.
+     */
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
 }

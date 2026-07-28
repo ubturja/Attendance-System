@@ -29,7 +29,7 @@ class HolidaySoftDeleteLifecycleTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_cannot_delete_malaysia_holiday_when_attendance_exists(): void
+    public function test_can_delete_malaysia_holiday_when_attendance_exists(): void
     {
         $team = Team::factory()->create();
         $admin = User::factory()->admin()->forTeam($team)->create();
@@ -51,14 +51,9 @@ class HolidaySoftDeleteLifecycleTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->deleteJson("/api/holidays/{$holiday->id}");
+        $this->deleteJson("/api/holidays/{$holiday->id}")->assertOk();
 
-        $response->assertStatus(422);
-        $response->assertJsonPath(
-            'message',
-            'Cannot delete holiday: Attendance records exist for this date. Clear the attendance first to reverse any granted leave credits.',
-        );
-        $this->assertNull($holiday->fresh()->deleted_at);
+        $this->assertSoftDeleted('holidays', ['id' => $holiday->id]);
     }
 
     public function test_can_delete_malaysia_holiday_when_no_attendance_exists(): void

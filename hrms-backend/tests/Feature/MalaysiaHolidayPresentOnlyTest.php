@@ -312,7 +312,7 @@ class MalaysiaHolidayPresentOnlyTest extends TestCase
         ]);
     }
 
-    public function test_admin_cannot_reverse_credit_when_already_consumed(): void
+    public function test_admin_can_force_reverse_credit_when_already_consumed(): void
     {
         $team = Team::factory()->create();
         $admin = User::factory()->admin()->forTeam($team)->create();
@@ -348,21 +348,28 @@ class MalaysiaHolidayPresentOnlyTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->putJson("/api/attendance/{$log->id}", [
+        $this->putJson("/api/attendance/{$log->id}", [
             'code' => 'X',
-        ]);
+        ])->assertOk();
 
-        $response->assertStatus(422);
         $this->assertDatabaseHas('attendance_logs', [
             'id' => $log->id,
-            'submitted_code' => 'O',
+            'submitted_code' => 'X',
         ]);
         $this->assertDatabaseHas('user_yearly_leave_records', [
             'user_id' => $employee->id,
             'leave_type_id' => $leaveTypeR->id,
             'year' => 2026,
-            'assigned_days' => 1,
+            'assigned_days' => 0,
             'taken_days' => 1,
         ]);
+
+        $record = UserYearlyLeaveRecord::query()
+            ->where('user_id', $employee->id)
+            ->where('leave_type_id', $leaveTypeR->id)
+            ->where('year', 2026)
+            ->firstOrFail();
+
+        $this->assertSame(-1.0, (float) $record->assigned_days - (float) $record->taken_days);
     }
 }

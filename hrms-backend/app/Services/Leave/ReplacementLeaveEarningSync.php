@@ -63,7 +63,7 @@ class ReplacementLeaveEarningSync
     {
         $normalizedDate = Carbon::parse($date)->toDateString();
 
-        return Holiday::query()
+        return Holiday::withTrashed()
             ->whereDate('date', $normalizedDate)
             ->where('type', self::CREDIT_HOLIDAY_TYPE)
             ->exists();

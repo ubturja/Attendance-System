@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '../../components/ui/Table';
 import { TableErrorRow } from '../../components/ui/TableErrorRow';
+import { useHolidays } from '../../hooks/useHolidays';
 import api from '../../lib/api';
 import {
   buildAttendanceOptions,
@@ -220,6 +221,11 @@ export default function DailyReport() {
   const teamId = searchParams.get('team_id') || '';
   const date = searchParams.get('date') || getTodayDateString();
 
+  const { data: holidays = [] } = useHolidays();
+  // Both sides are plain `YYYY-MM-DD` (API + URL/date input) — strict match is correct.
+  const currentHoliday = holidays.find((h) => h.date === date);
+  const isMalaysianHoliday = currentHoliday?.type === 'malaysia';
+
   const {
     data: report,
     isLoading,
@@ -246,10 +252,22 @@ export default function DailyReport() {
     queryFn: fetchAdminReportLeaveTypes,
   });
 
-  const attendanceOptions = useMemo(
-    () => buildAttendanceOptions(leaveTypesQuery.data ?? []),
-    [leaveTypesQuery.data],
-  );
+  const attendanceOptions = useMemo(() => {
+    const options = buildAttendanceOptions(leaveTypesQuery.data ?? []);
+
+    // Malaysian holidays: Present (O) + Clear (X); other codes hidden.
+    if (isMalaysianHoliday) {
+      const present =
+        options.find((option) => option.value === 'O') ?? {
+          label: 'Present',
+          value: 'O',
+        };
+
+      return [present, { label: 'Clear Selection', value: 'X' }];
+    }
+
+    return options;
+  }, [leaveTypesQuery.data, isMalaysianHoliday]);
 
   const updateAttendanceMutation = useMutation({
     mutationFn: updateDailyAttendance,

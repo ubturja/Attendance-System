@@ -178,7 +178,7 @@ class ReplacementLeaveEarningSyncTest extends TestCase
         ]);
     }
 
-    public function test_soft_deleted_malaysia_holiday_does_not_credit_assigned_days(): void
+    public function test_soft_deleted_malaysia_holiday_still_credits_assigned_days(): void
     {
         [$employee, $leaveTypeR] = $this->seedEmployeeWithReplacementLeave();
 
@@ -201,11 +201,13 @@ class ReplacementLeaveEarningSyncTest extends TestCase
             ],
         ])->assertCreated();
 
-        $this->assertDatabaseMissing('user_yearly_leave_records', [
+        $this->assertDatabaseHas('user_yearly_leave_records', [
             'user_id' => $employee->id,
             'leave_type_id' => $leaveTypeR->id,
+            'year' => 2026,
+            'assigned_days' => 1.0,
+            'taken_days' => 0.0,
         ]);
-        $this->assertSame(0, UserYearlyLeaveRecord::query()->count());
     }
 
     public function test_cannot_revoke_malaysia_holiday_present_when_replacement_leave_already_taken(): void

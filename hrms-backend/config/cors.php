@@ -20,9 +20,9 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://localhost:3000',
+        'http://localhost:3000', 
         'http://localhost:5173',
-        'https://mts-attendance-system-qrq95v9tu-ubturjas-projects.vercel.app',
+        'https://mts-attendance-system.vercel.app',
     ],
 
     'allowed_origins_patterns' => [],

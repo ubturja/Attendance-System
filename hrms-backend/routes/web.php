@@ -19,3 +19,10 @@ Route::get('/run-migrations', function () {
         return 'Error: '.$e->getMessage();
     }
 });
+
+Route::get('/clear-cache', function () {
+    Artisan::call('config:clear');
+    Artisan::call('cache:clear');
+    Artisan::call('route:clear');
+    return 'All Laravel caches cleared successfully! 🚀';
+});

@@ -29,6 +29,9 @@ class StoreTeamRequest extends ApiFormRequest
 
             // Optional leader designation — must reference an existing user if provided.
             'team_leader_id' => ['nullable', 'integer', 'exists:users,id'],
+
+            // Optional chat created with the team. Members are added later.
+            'create_team_group' => ['sometimes', 'boolean'],
         ];
     }
 

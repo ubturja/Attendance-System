@@ -16,4 +16,10 @@ class ExampleTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    public function test_maintenance_routes_are_not_public(): void
+    {
+        $this->get('/run-migrations')->assertNotFound();
+        $this->get('/clear-cache')->assertNotFound();
+    }
 }

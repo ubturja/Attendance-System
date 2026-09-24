@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ArchiveRestore,
@@ -29,6 +29,7 @@ import {
 import { TableErrorRow } from '../../components/ui/TableErrorRow';
 import api from '../../lib/api';
 import { getApiErrorMessage } from '../../lib/errors';
+import { fetchGroupOptions, type GroupOption } from '../../lib/messaging';
 import {
   invalidateReportQueries,
   queryKeys,
@@ -103,6 +104,7 @@ interface UpdateUserPayload {
   team_id: number | null;
   is_active: boolean;
   password?: string;
+  group_ids?: number[];
 }
 
 interface SaveUserVariables {
@@ -260,6 +262,8 @@ export default function Users() {
   const [formState, setFormState] = useState<CreateUserFormState>(EMPTY_CREATE_USER_FORM);
   const [formError, setFormError] = useState<string | undefined>();
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
+  const [groupSeed, setGroupSeed] = useState('');
 
   const isEditMode = editingUser !== null;
   const isViewOnly = isEditMode && isUserArchived(editingUser);
@@ -280,6 +284,26 @@ export default function Users() {
     queryKey: queryKeys.teams.admin,
     queryFn: fetchTeams,
   });
+
+  const groupOptionsKey = `${editingUser?.id ?? ''}:${formState.team_id}:${formState.role}`;
+  const groupOptionsQuery = useQuery({
+    queryKey: ['messaging', 'group-options', editingUser?.id, formState.team_id, formState.role],
+    queryFn: () => fetchGroupOptions(editingUser?.id ?? 0, parseTeamId(formState.team_id)),
+    enabled: panelOpen && editingUser !== null && !isViewOnly,
+  });
+
+  useEffect(() => {
+    if (!groupOptionsQuery.isSuccess || groupOptionsQuery.isFetching) {
+      return;
+    }
+    if (groupSeed === groupOptionsKey) {
+      return;
+    }
+    setSelectedGroupIds(
+      groupOptionsQuery.data.filter((group: GroupOption) => group.is_member).map((group) => group.id),
+    );
+    setGroupSeed(groupOptionsKey);
+  }, [groupOptionsQuery.isSuccess, groupOptionsQuery.isFetching, groupOptionsQuery.data, groupOptionsKey, groupSeed]);
 
   function handleSearchChange(value: string): void {
     setSearchParams((prev) => {
@@ -368,6 +392,8 @@ export default function Users() {
     setFormState(createUserFormFromRecord(user));
     setFormError(undefined);
     setShowPassword(false);
+    setGroupSeed('');
+    setSelectedGroupIds([]);
     setPanelOpen(true);
   }
 
@@ -377,6 +403,8 @@ export default function Users() {
     setFormState(EMPTY_CREATE_USER_FORM);
     setFormError(undefined);
     setShowPassword(false);
+    setGroupSeed('');
+    setSelectedGroupIds([]);
   }
 
   function handleSaveUser() {
@@ -397,6 +425,10 @@ export default function Users() {
 
       if (trimmedPassword.length > 0) {
         payload.password = trimmedPassword;
+      }
+
+      if (groupOptionsQuery.isSuccess) {
+        payload.group_ids = selectedGroupIds;
       }
 
       saveUserMutation.mutate({
@@ -831,6 +863,41 @@ export default function Users() {
               />
             </div>
           </div>
+
+          {isEditMode && !isViewOnly ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700">Groups</p>
+              <p className="text-xs text-slate-500">
+                Add this person to announcement, general, or matching team groups.
+              </p>
+              {groupOptionsQuery.isLoading ? (
+                <p className="text-xs text-slate-500">Loading groups...</p>
+              ) : (groupOptionsQuery.data ?? []).length === 0 ? (
+                <p className="text-xs text-slate-500">No groups are available for this person yet.</p>
+              ) : (
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-slate-200 p-2">
+                  {(groupOptionsQuery.data ?? []).map((group) => (
+                    <label key={group.id} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroupIds.includes(group.id)}
+                        disabled={isPanelBusy}
+                        onChange={() => {
+                          setSelectedGroupIds((current) =>
+                            current.includes(group.id)
+                              ? current.filter((id) => id !== group.id)
+                              : [...current, group.id],
+                          );
+                        }}
+                      />
+                      <span>{group.name}</span>
+                      <span className="text-xs capitalize text-slate-400">{group.kind}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {isEditMode ? (
             <div className="flex w-full flex-col gap-1.5">

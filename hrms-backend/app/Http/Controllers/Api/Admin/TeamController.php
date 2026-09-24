@@ -8,8 +8,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreTeamRequest;
 use App\Http\Requests\Admin\UpdateTeamRequest;
 use App\Models\Team;
+use App\Models\User;
+use App\Services\Messaging\MessagingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Admin CRUD controller for HRMS team management.
@@ -33,8 +36,8 @@ class TeamController extends Controller
         $isArchived = $request->query('status') === 'archived';
 
         $query = $isArchived
-            ? Team::onlyTrashed()->with(['leader', 'historicalMembers.user'])
-            : Team::query()->with(['leader', 'users']);
+            ? Team::onlyTrashed()->with(['leader', 'historicalMembers.user', 'teamGroup'])
+            : Team::query()->with(['leader', 'users', 'teamGroup']);
 
         if (is_string($search) && trim($search) !== '') {
             $query->where('team_name', 'like', '%'.trim($search).'%');
@@ -54,15 +57,26 @@ class TeamController extends Controller
     /**
      * Persist a new team record.
      */
-    public function store(StoreTeamRequest $request): JsonResponse
+    public function store(StoreTeamRequest $request, MessagingService $messaging): JsonResponse
     {
-        // StoreTeamRequest validates unique team_name and optional team_leader_id FK.
         $validated = $request->validated();
+        $createTeamGroup = (bool) ($validated['create_team_group'] ?? false);
+        unset($validated['create_team_group']);
 
-        // Mass assignment protected by Team::$fillable whitelist.
-        $team = Team::query()->create($validated);
+        $team = DB::transaction(function () use ($request, $messaging, $validated, $createTeamGroup): Team {
+            $team = Team::query()->create($validated);
 
-        $team->load(['leader', 'users']);
+            if ($createTeamGroup) {
+                $actor = $request->user();
+                if ($actor instanceof User) {
+                    $messaging->ensureTeamGroup($actor, $team);
+                }
+            }
+
+            return $team;
+        });
+
+        $team->load(['leader', 'users', 'teamGroup']);
 
         return response()->json([
             'success' => true,
@@ -76,7 +90,7 @@ class TeamController extends Controller
      */
     public function show(Team $team): JsonResponse
     {
-        $team->load(['leader', 'users']);
+        $team->load(['leader', 'users', 'teamGroup']);
 
         return response()->json([
             'success' => true,
@@ -88,19 +102,20 @@ class TeamController extends Controller
     /**
      * Update team name and/or leader designation.
      */
-    public function update(UpdateTeamRequest $request, Team $team): JsonResponse
+    public function update(UpdateTeamRequest $request, Team $team, MessagingService $messaging): JsonResponse
     {
-        // UpdateTeamRequest scopes team_name uniqueness to the current record.
-        // Accepts nullable team_leader_id (exists:users,id) to assign or clear the leader.
         $validated = $request->validated();
-
-        // fill() respects $fillable — only team_name and team_leader_id are writable.
         $team->fill($validated);
-
-        // Persist changes to MySQL teams table.
         $team->save();
 
-        $team->load(['leader', 'users']);
+        if ($team->wasChanged('team_name')) {
+            $actor = $request->user();
+            if ($actor instanceof User) {
+                $messaging->renameTeamGroup($actor, $team);
+            }
+        }
+
+        $team->load(['leader', 'users', 'teamGroup']);
 
         return response()->json([
             'success' => true,
@@ -115,14 +130,12 @@ class TeamController extends Controller
      * Business rule (PRD / SystemArchitecture): block archival when active users
      * are still assigned to the team — team must be empty first.
      */
-    public function destroy(Team $team): JsonResponse
+    public function destroy(Team $team, MessagingService $messaging): JsonResponse
     {
-        // Query active members — is_active=true per ERD operational flag.
         $hasActiveUsers = $team->users()
             ->where('is_active', true)
             ->exists();
 
-        // Abort before soft-delete when active assignments remain — 422 per API contract.
         if ($hasActiveUsers) {
             return response()->json([
                 'success' => false,
@@ -130,8 +143,14 @@ class TeamController extends Controller
             ], 422);
         }
 
-        // Soft delete — sets deleted_at; historical FKs and membership history remain intact.
-        $team->delete();
+        DB::transaction(function () use ($messaging, $team): void {
+            $actor = request()->user();
+            if ($actor instanceof User) {
+                $messaging->archiveTeamGroup($actor, $team);
+            }
+
+            $team->delete();
+        });
 
         return response()->json([
             'success' => true,
@@ -145,12 +164,16 @@ class TeamController extends Controller
      *
      * Clears deleted_at so the team reappears in the active Admin catalog.
      */
-    public function restore(int $id): JsonResponse
+    public function restore(int $id, MessagingService $messaging): JsonResponse
     {
         $team = Team::onlyTrashed()->findOrFail($id);
         $team->restore();
+        $actor = request()->user();
+        if ($actor instanceof User) {
+            $messaging->restoreTeamGroup($actor, $team);
+        }
 
-        $team->load(['leader', 'users', 'historicalMembers.user']);
+        $team->load(['leader', 'users', 'historicalMembers.user', 'teamGroup']);
 
         return response()->json([
             'success' => true,

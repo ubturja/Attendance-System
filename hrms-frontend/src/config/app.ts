@@ -1,4 +1,4 @@
 export const APP_CONFIG = {
-  name: 'MTS Attendance',
+  name: 'HRMS',
   version: 'beta v1.0',
 } as const;

@@ -1,28 +1,7 @@
 <?php
 
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
-});
-
-Route::get('/run-migrations', function () {
-    try {
-        Artisan::call('migrate:fresh', [
-            '--seed' => true,
-            '--force' => true,
-        ]);
-
-        return 'Database migrated and seeded successfully!';
-    } catch (\Exception $e) {
-        return 'Error: '.$e->getMessage();
-    }
-});
-
-Route::get('/clear-cache', function () {
-    Artisan::call('config:clear');
-    Artisan::call('cache:clear');
-    Artisan::call('route:clear');
-    return 'All Laravel caches cleared successfully! 🚀';
 });

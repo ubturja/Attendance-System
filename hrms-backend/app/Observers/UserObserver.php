@@ -6,6 +6,7 @@ namespace App\Observers;
 
 use App\Models\TeamMembershipHistory;
 use App\Models\User;
+use App\Services\Messaging\MessagingService;
 
 /**
  * Records team membership join/leave windows whenever users.team_id is set or changes.
@@ -69,6 +70,8 @@ class UserObserver
                 ->orderByDesc('joined_at')
                 ->limit(1)
                 ->update(['left_at' => now()]);
+
+            app(MessagingService::class)->removeUserFromTeamChat($user, (int) $previousTeamId);
         }
 
         // Start a new membership window on the destination team, if any.
@@ -93,6 +96,10 @@ class UserObserver
      */
     public function deleted(User $user): void
     {
+        if ($user->team_id !== null) {
+            app(MessagingService::class)->removeUserFromTeamChat($user, (int) $user->team_id);
+        }
+
         $this->closeOpenMembershipWindows($user);
         $user->tokens()->delete();
 

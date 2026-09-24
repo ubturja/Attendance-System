@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\LeaveAllocationController;
 use App\Http\Controllers\Api\LeaveTypeController;
+use App\Http\Controllers\Api\MessagingController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use Illuminate\Support\Facades\Route;
@@ -54,6 +55,33 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
         // Holiday calendar (read): all authenticated users.
         Route::get('/holidays', [HolidayController::class, 'index']);
+
+        // Messaging is available to every active Admin and Employee.
+        // Group management stays inside the service so employees receive a normal 403
+        // instead of the admin-route role redirect.
+        Route::get('/conversations', [MessagingController::class, 'index']);
+        Route::post('/conversations', [MessagingController::class, 'store']);
+        Route::post('/conversations/direct', [MessagingController::class, 'openDirect']);
+        Route::get('/conversations/{conversation}', [MessagingController::class, 'show']);
+        Route::patch('/conversations/{conversation}', [MessagingController::class, 'update']);
+        Route::delete('/conversations/{conversation}', [MessagingController::class, 'destroy']);
+        Route::post('/conversations/{conversation}/restore', [MessagingController::class, 'restore']);
+        Route::post('/conversations/{conversation}/join', [MessagingController::class, 'join']);
+        Route::post('/conversations/{conversation}/members', [MessagingController::class, 'addMembers']);
+        Route::delete('/conversations/{conversation}/members/{user}', [MessagingController::class, 'removeMember']);
+        Route::get('/conversations/{conversation}/messages', [MessagingController::class, 'messages']);
+        Route::post('/conversations/{conversation}/messages', [MessagingController::class, 'send']);
+        Route::post('/conversations/{conversation}/read', [MessagingController::class, 'read']);
+        Route::post('/conversations/{conversation}/delivered', [MessagingController::class, 'delivered']);
+        Route::post('/conversations/{conversation}/typing', [MessagingController::class, 'typing']);
+        Route::patch('/messages/{message}', [MessagingController::class, 'edit']);
+        Route::delete('/messages/{message}', [MessagingController::class, 'deleteMessage']);
+        Route::get('/messages/{message}/reveal', [MessagingController::class, 'reveal']);
+        Route::get('/messaging/sync', [MessagingController::class, 'sync']);
+        Route::get('/messaging/unread-count', [MessagingController::class, 'unreadCount']);
+        Route::get('/messaging/directory', [MessagingController::class, 'directory']);
+        Route::get('/messaging/group-options', [MessagingController::class, 'groupOptions']);
+        Route::get('/messaging/attachments/{attachment}', [MessagingController::class, 'download']);
     });
 
     // Holiday calendar (write): Admin-only create / update / delete / restore.
@@ -79,6 +107,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('teams', TeamController::class);
         Route::patch('/teams/{id}/restore', [TeamController::class, 'restore']);
+        Route::post('/teams/{team}/group', [MessagingController::class, 'ensureTeamGroup']);
 
         // ── Module 3: Dynamic Leave — Admin catalog mutations (create, toggle, archive, restore).
         Route::get('/leave-types', [LeaveTypeController::class, 'adminIndex']);

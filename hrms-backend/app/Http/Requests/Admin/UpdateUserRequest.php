@@ -42,6 +42,10 @@ class UpdateUserRequest extends ApiFormRequest
 
             // Move user between teams — nullable clears assignment.
             'team_id' => ['sometimes', 'nullable', 'integer', 'exists:teams,id'],
+
+            // Desired group memberships. Omit the key to leave chats unchanged.
+            'group_ids' => ['sometimes', 'array'],
+            'group_ids.*' => ['integer'],
         ];
     }
 }

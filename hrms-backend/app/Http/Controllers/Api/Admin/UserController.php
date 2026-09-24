@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\LeaveType;
 use App\Models\User;
 use App\Models\UserYearlyLeaveRecord;
+use App\Services\Messaging\MessagingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -214,23 +215,29 @@ class UserController extends Controller
      * Optional password reset: when password is filled, hash and persist it;
      * otherwise leave existing credentials unchanged.
      */
-    public function update(UpdateUserRequest $request, User $user): JsonResponse
+    public function update(UpdateUserRequest $request, User $user, MessagingService $messaging): JsonResponse
     {
-        // UpdateUserRequest blocks name, email, passport_number at validation boundary.
         $validated = $request->validated();
+        $groupIds = null;
+        if (array_key_exists('group_ids', $validated)) {
+            $groupIds = $validated['group_ids'];
+            unset($validated['group_ids']);
+        }
 
         if ($request->filled('password')) {
-            // Hash plaintext before fill — hashed cast skips already-hashed values.
             $validated['password'] = Hash::make($request->password);
         } else {
             unset($validated['password']);
         }
 
-        // fill() respects $fillable — only vetted keys are written to the row.
-        $user->fill($validated);
+        DB::transaction(function () use ($request, $user, $validated, $groupIds, $messaging): void {
+            $user->fill($validated);
+            $user->save();
 
-        // Persist changes to MySQL users table.
-        $user->save();
+            if (is_array($groupIds)) {
+                $messaging->syncGroupMemberships($request->user(), $user, $groupIds);
+            }
+        });
 
         $user->load('team');
 

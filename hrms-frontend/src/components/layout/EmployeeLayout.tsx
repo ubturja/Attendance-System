@@ -1,11 +1,13 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, LogOut, Menu, UserRound } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Menu, MessageSquare, UserRound } from 'lucide-react';
 import { profileInitials, useCurrentProfile } from '../../hooks/useCurrentProfile';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { APP_CONFIG } from '../../config/app';
 import { performLogout } from '../../lib/auth';
+import { fetchUnreadCount } from '../../lib/messaging';
 import { cn } from '../../lib/utils';
 
 interface NavItem {
@@ -17,6 +19,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/employee', end: true, icon: LayoutDashboard },
+  { label: 'Messages', to: '/employee/messages', end: true, icon: MessageSquare },
   { label: 'Calendar', to: '/employee/calendar', end: true, icon: Calendar },
   { label: 'Profile', to: '/employee/profile', end: true, icon: UserRound },
 ];
@@ -32,6 +35,12 @@ export function EmployeeLayout() {
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
   );
   const { data: profile, isLoading } = useCurrentProfile();
+  const unreadQuery = useQuery({
+    queryKey: ['messaging', 'unread-count'],
+    queryFn: fetchUnreadCount,
+    refetchInterval: 3000,
+  });
+  const unreadCount = unreadQuery.data ?? 0;
 
   const displayName = profile?.name ?? '';
   const displayRole = profile?.job_title ?? '';
@@ -96,6 +105,11 @@ export function EmployeeLayout() {
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {item.label}
+                {item.to === '/employee/messages' && unreadCount > 0 ? (
+                  <span className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
               </NavLink>
             );
           })}

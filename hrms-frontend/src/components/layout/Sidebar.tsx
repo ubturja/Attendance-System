@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router-dom';
 import {
   Calendar,
@@ -7,11 +8,13 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   Users,
   UsersRound,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { APP_CONFIG } from '../../config/app';
+import { fetchUnreadCount } from '../../lib/messaging';
 import { cn } from '../../lib/utils';
 
 interface NavItem {
@@ -24,6 +27,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
   { label: 'Users', to: '/admin/users', icon: Users },
   { label: 'Teams', to: '/admin/teams', icon: UsersRound },
+  { label: 'Messages', to: '/admin/messages', icon: MessageSquare },
   { label: 'Leave Types', to: '/admin/leave-types', icon: CalendarDays },
   { label: 'Calendar', to: '/admin/calendar', icon: Calendar },
   { label: 'Reports', to: '/admin/reports', icon: ClipboardList },
@@ -50,6 +54,13 @@ export function Sidebar({
   isLoggingOut,
   onLogout,
 }: SidebarProps) {
+  const unreadQuery = useQuery({
+    queryKey: ['messaging', 'unread-count'],
+    queryFn: fetchUnreadCount,
+    refetchInterval: 3000,
+  });
+  const unreadCount = unreadQuery.data ?? 0;
+
   return (
     <>
       <aside
@@ -133,6 +144,11 @@ export function Sidebar({
                 >
                   {item.label}
                 </span>
+                {item.to === '/admin/messages' && unreadCount > 0 ? (
+                  <span className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
               </NavLink>
             );
           })}

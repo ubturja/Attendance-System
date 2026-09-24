@@ -66,6 +66,7 @@ interface TeamRecord {
   team_leader?: TeamLeader | null;
   users?: TeamMember[];
   historical_members?: TeamMembershipHistoryRecord[];
+  team_group?: { id: number; deleted_at?: string | null } | null;
 }
 
 interface UserRecord {
@@ -86,6 +87,7 @@ interface DraftRosterMember {
 
 interface CreateTeamPayload {
   team_name: string;
+  create_team_group?: boolean;
 }
 
 interface UpdateTeamPayload {
@@ -103,6 +105,9 @@ interface SaveEditTeamVariables {
   teamLeaderId: number | null;
   originalMemberIds: number[];
   draftMemberIds: number[];
+  createTeamGroup: boolean;
+  addSelectedToGroup: boolean;
+  activeGroupId: number | null;
 }
 
 interface CreateTeamFormState {
@@ -174,6 +179,9 @@ async function saveEditTeamChanges({
   teamLeaderId,
   originalMemberIds,
   draftMemberIds,
+  createTeamGroup,
+  addSelectedToGroup,
+  activeGroupId,
 }: SaveEditTeamVariables): Promise<void> {
   const originalSet = new Set(originalMemberIds);
   const draftSet = new Set(draftMemberIds);
@@ -186,10 +194,23 @@ async function saveEditTeamChanges({
     team_leader_id: teamLeaderId,
   });
 
-  await Promise.all([
-    ...memberIdsToAdd.map((userId) => updateUserTeam(userId, { team_id: teamId })),
-    ...memberIdsToRemove.map((userId) => updateUserTeam(userId, { team_id: null })),
-  ]);
+  await Promise.all(
+    memberIdsToRemove.map((userId) => updateUserTeam(userId, { team_id: null })),
+  );
+  await Promise.all(
+    memberIdsToAdd.map((userId) => updateUserTeam(userId, { team_id: teamId })),
+  );
+
+  if (createTeamGroup) {
+    await api.post(`/admin/teams/${teamId}/group`, {
+      add_user_ids: addSelectedToGroup ? draftMemberIds : [],
+    });
+    return;
+  }
+
+  if (activeGroupId !== null) {
+    await api.delete(`/conversations/${activeGroupId}`);
+  }
 }
 
 function getTeamLeaderName(team: TeamRecord): string {
@@ -267,6 +288,9 @@ export default function Teams() {
   const [draftMemberIds, setDraftMemberIds] = useState<number[]>([]);
   const [originalMemberIds, setOriginalMemberIds] = useState<number[]>([]);
   const [teamLeaderId, setTeamLeaderId] = useState<number | null>(null);
+  const [createTeamGroup, setCreateTeamGroup] = useState(false);
+  const [addSelectedToGroup, setAddSelectedToGroup] = useState(false);
+  const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
 
   const isEditMode = editingTeamId !== null;
 
@@ -456,6 +480,9 @@ export default function Teams() {
     setDraftMemberIds([]);
     setOriginalMemberIds([]);
     setTeamLeaderId(null);
+    setCreateTeamGroup(false);
+    setAddSelectedToGroup(false);
+    setActiveGroupId(null);
     setPanelOpen(true);
   }
 
@@ -471,6 +498,10 @@ export default function Teams() {
     setDraftMemberIds(memberIds);
     setOriginalMemberIds(memberIds);
     setTeamLeaderId(team.team_leader_id);
+    const groupIsActive = team.team_group != null && (team.team_group.deleted_at == null || team.team_group.deleted_at === '');
+    setCreateTeamGroup(groupIsActive);
+    setAddSelectedToGroup(false);
+    setActiveGroupId(groupIsActive ? team.team_group?.id ?? null : null);
     setPanelOpen(true);
   }
 
@@ -486,6 +517,9 @@ export default function Teams() {
     setDraftMemberIds([]);
     setOriginalMemberIds([]);
     setTeamLeaderId(null);
+    setCreateTeamGroup(false);
+    setAddSelectedToGroup(false);
+    setActiveGroupId(null);
   }
 
   function handleSearchChange(value: string): void {
@@ -536,7 +570,10 @@ export default function Teams() {
     }
 
     if (!isEditMode) {
-      createTeamMutation.mutate({ team_name: trimmedName });
+      createTeamMutation.mutate({
+        team_name: trimmedName,
+        create_team_group: createTeamGroup,
+      });
       return;
     }
 
@@ -550,6 +587,9 @@ export default function Teams() {
       teamLeaderId: effectiveTeamLeaderId,
       originalMemberIds,
       draftMemberIds,
+      createTeamGroup,
+      addSelectedToGroup,
+      activeGroupId,
     });
   }
 
@@ -813,6 +853,37 @@ export default function Teams() {
               }
             }}
           />
+
+          {!isViewOnly ? (
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={createTeamGroup}
+                disabled={isPanelBusy}
+                onChange={(event) => setCreateTeamGroup(event.target.checked)}
+              />
+              <span>
+                Create {formState.name.trim() || 'team'} group
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Turns on the team chat. Turning it off archives that chat and keeps its history.
+                </span>
+              </span>
+            </label>
+          ) : null}
+
+          {isEditMode && !isViewOnly && createTeamGroup ? (
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={addSelectedToGroup}
+                disabled={isPanelBusy}
+                onChange={(event) => setAddSelectedToGroup(event.target.checked)}
+              />
+              <span>Add all the users selected into the team group</span>
+            </label>
+          ) : null}
 
           {isViewOnly ? (
             <>

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -99,5 +100,14 @@ class Team extends Model
     public function historicalMembers(): HasMany
     {
         return $this->hasMany(TeamMembershipHistory::class, 'team_id');
+    }
+
+    /**
+     * The single team chat for this team, including a soft-deleted chat so it
+     * can be restored with its history.
+     */
+    public function teamGroup(): HasOne
+    {
+        return $this->hasOne(Conversation::class, 'team_id')->withTrashed();
     }
 }

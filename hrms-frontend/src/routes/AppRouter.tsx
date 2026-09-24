@@ -10,6 +10,7 @@ import Users from '../pages/admin/Users';
 import Dashboard from '../pages/employee/Dashboard';
 import Profile from '../pages/employee/Profile';
 import Calendar from '../pages/shared/Calendar';
+import Messages from '../pages/shared/Messages';
 import Login from '../pages/auth/Login';
 import NotFound from '../pages/NotFound';
 
@@ -45,6 +46,10 @@ const routes: RouteObject[] = [
       {
         path: 'teams',
         element: <Teams />,
+      },
+      {
+        path: 'messages',
+        element: <Messages />,
       },
       {
         path: 'leave-types',
@@ -91,6 +96,10 @@ const routes: RouteObject[] = [
       {
         path: 'profile',
         element: <Profile />,
+      },
+      {
+        path: 'messages',
+        element: <Messages />,
       },
     ],
   },

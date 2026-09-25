@@ -433,17 +433,9 @@ export default function Messages() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-semibold text-slate-900">{item.name}</span>
                   {item.unread_count > 0 || item.has_unread_mention ? (
-                    <span className="flex shrink-0 items-center gap-1">
-                      {item.has_unread_mention ? (
-                        <span className="text-xs font-bold text-brand" aria-label="You were mentioned">
-                          @
-                        </span>
-                      ) : null}
-                      {item.unread_count > 0 ? (
-                        <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                          {item.unread_count}
-                        </span>
-                      ) : null}
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      {item.has_unread_mention ? <span aria-label="You were mentioned">@</span> : null}
+                      {item.unread_count > 0 ? <span>{item.unread_count}</span> : null}
                     </span>
                   ) : null}
                 </div>
@@ -658,8 +650,21 @@ export default function Messages() {
                 {canCompose ? (
                   <form
                     className="border-t border-slate-200 p-3"
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
+                        return;
+                      }
+                      if (!(event.target instanceof HTMLTextAreaElement)) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.currentTarget.requestSubmit();
+                    }}
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (sendMutation.isPending) {
+                        return;
+                      }
                       if (draft.trim() === '' && files.length === 0 && keptAttachmentIds.length === 0) {
                         setError('A message needs text or a file.');
                         return;
@@ -740,16 +745,6 @@ export default function Messages() {
                       <textarea
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
-                            return;
-                          }
-                          event.preventDefault();
-                          if (sendMutation.isPending) {
-                            return;
-                          }
-                          event.currentTarget.form?.requestSubmit();
-                        }}
                         rows={2}
                         placeholder="Write a message. Use @ to mention someone."
                         className="min-h-10 flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"

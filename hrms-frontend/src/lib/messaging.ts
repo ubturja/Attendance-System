@@ -322,8 +322,22 @@ export interface UnreadSummary {
 }
 
 export async function fetchUnreadCount(): Promise<UnreadSummary> {
-  const response = await api.get<ApiSuccessResponse<UnreadSummary>>('/messaging/unread-count');
-  return response.data.data;
+  const response = await api.get<ApiSuccessResponse<Partial<UnreadSummary> & { unread_count: number }>>(
+    '/messaging/unread-count',
+  );
+  const summary = response.data.data;
+  if (typeof summary.has_unread_mention === 'boolean') {
+    return {
+      unread_count: summary.unread_count,
+      has_unread_mention: summary.has_unread_mention,
+    };
+  }
+
+  const conversations = await fetchConversations();
+  return {
+    unread_count: summary.unread_count,
+    has_unread_mention: conversations.some((item) => item.has_unread_mention),
+  };
 }
 
 export async function downloadAttachment(attachmentId: number, reveal = false): Promise<Blob> {

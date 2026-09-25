@@ -146,17 +146,9 @@ export function Sidebar({
                   {item.label}
                 </span>
                 {item.to === '/admin/messages' && (unreadCount > 0 || hasUnreadMention) ? (
-                  <span className="ml-auto flex items-center gap-1">
-                    {hasUnreadMention ? (
-                      <span className="text-xs font-bold text-brand" aria-label="You were mentioned">
-                        @
-                      </span>
-                    ) : null}
-                    {unreadCount > 0 ? (
-                      <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        {unreadCount}
-                      </span>
-                    ) : null}
+                  <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {hasUnreadMention ? <span aria-label="You were mentioned">@</span> : null}
+                    {unreadCount > 0 ? <span>{unreadCount}</span> : null}
                   </span>
                 ) : null}
               </NavLink>

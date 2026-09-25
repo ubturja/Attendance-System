@@ -332,4 +332,50 @@ class MessagingTest extends TestCase
         $names = collect($this->getJson('/api/conversations')->assertOk()->json('data'))->pluck('name');
         $this->assertFalse($names->contains('Private general'));
     }
+
+    public function test_an_unread_mention_is_flagged_beside_the_message_notification(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $mentioned = User::factory()->employee()->create();
+        $other = User::factory()->employee()->create();
+
+        Sanctum::actingAs($admin);
+        $created = $this->postJson('/api/conversations', [
+            'kind' => Conversation::KIND_GENERAL,
+            'name' => 'Mentions',
+            'send_permission' => Conversation::SEND_ALL_MEMBERS,
+            'member_ids' => [$admin->id, $mentioned->id, $other->id],
+        ])->assertCreated();
+        $conversationId = (int) $created->json('data.id');
+
+        $sent = $this->postJson("/api/conversations/{$conversationId}/messages", [
+            'body' => '@'.$mentioned->name.' hello',
+            'mention_user_ids' => [$mentioned->id],
+        ])->assertCreated();
+        $messageId = (int) $sent->json('data.id');
+
+        Sanctum::actingAs($mentioned);
+        $mentionedUnread = $this->getJson('/api/messaging/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.has_unread_mention', true);
+        $this->assertGreaterThan(0, $mentionedUnread->json('data.unread_count'));
+        $this->assertTrue(
+            collect($this->getJson('/api/conversations')->json('data'))
+                ->firstWhere('id', $conversationId)['has_unread_mention'],
+        );
+
+        Sanctum::actingAs($other);
+        $this->getJson('/api/messaging/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.has_unread_mention', false);
+
+        Sanctum::actingAs($mentioned);
+        $this->postJson("/api/conversations/{$conversationId}/read", [
+            'message_id' => $messageId,
+        ])->assertOk();
+        $this->getJson('/api/messaging/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.has_unread_mention', false)
+            ->assertJsonPath('data.unread_count', 0);
+    }
 }

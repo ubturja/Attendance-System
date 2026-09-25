@@ -59,7 +59,8 @@ export function Sidebar({
     queryFn: fetchUnreadCount,
     refetchInterval: 3000,
   });
-  const unreadCount = unreadQuery.data ?? 0;
+  const unreadCount = unreadQuery.data?.unread_count ?? 0;
+  const hasUnreadMention = unreadQuery.data?.has_unread_mention ?? false;
 
   return (
     <>
@@ -144,9 +145,18 @@ export function Sidebar({
                 >
                   {item.label}
                 </span>
-                {item.to === '/admin/messages' && unreadCount > 0 ? (
-                  <span className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {unreadCount}
+                {item.to === '/admin/messages' && (unreadCount > 0 || hasUnreadMention) ? (
+                  <span className="ml-auto flex items-center gap-1">
+                    {hasUnreadMention ? (
+                      <span className="text-xs font-bold text-brand" aria-label="You were mentioned">
+                        @
+                      </span>
+                    ) : null}
+                    {unreadCount > 0 ? (
+                      <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {unreadCount}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
               </NavLink>

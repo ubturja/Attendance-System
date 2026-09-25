@@ -316,11 +316,14 @@ export async function fetchGroupOptions(userId: number, teamId: number | null): 
   return response.data.data;
 }
 
-export async function fetchUnreadCount(): Promise<number> {
-  const response = await api.get<ApiSuccessResponse<{ unread_count: number }>>(
-    '/messaging/unread-count',
-  );
-  return response.data.data.unread_count;
+export interface UnreadSummary {
+  unread_count: number;
+  has_unread_mention: boolean;
+}
+
+export async function fetchUnreadCount(): Promise<UnreadSummary> {
+  const response = await api.get<ApiSuccessResponse<UnreadSummary>>('/messaging/unread-count');
+  return response.data.data;
 }
 
 export async function downloadAttachment(attachmentId: number, reveal = false): Promise<Blob> {

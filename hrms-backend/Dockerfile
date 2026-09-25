@@ -37,5 +37,6 @@ RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/fra
 # 10. Install Laravel dependencies
 RUN composer install --optimize-autoloader --no-interaction
 
-# 11. Run optimizations and turn on the server
-CMD php artisan config:cache && php artisan route:cache && apache2-foreground
+# 11. Apply pending migrations, cache config/routes, then start Apache.
+# migrate --force creates new tables such as conversations. It does not wipe data.
+CMD php artisan config:cache && php artisan migrate --force && php artisan route:cache && apache2-foreground

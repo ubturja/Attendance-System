@@ -40,7 +40,8 @@ export function EmployeeLayout() {
     queryFn: fetchUnreadCount,
     refetchInterval: 3000,
   });
-  const unreadCount = unreadQuery.data ?? 0;
+  const unreadCount = unreadQuery.data?.unread_count ?? 0;
+  const hasUnreadMention = unreadQuery.data?.has_unread_mention ?? false;
 
   const displayName = profile?.name ?? '';
   const displayRole = profile?.job_title ?? '';
@@ -105,9 +106,18 @@ export function EmployeeLayout() {
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {item.label}
-                {item.to === '/employee/messages' && unreadCount > 0 ? (
-                  <span className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {unreadCount}
+                {item.to === '/employee/messages' && (unreadCount > 0 || hasUnreadMention) ? (
+                  <span className="ml-auto flex items-center gap-1">
+                    {hasUnreadMention ? (
+                      <span className="text-xs font-bold text-brand" aria-label="You were mentioned">
+                        @
+                      </span>
+                    ) : null}
+                    {unreadCount > 0 ? (
+                      <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {unreadCount}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
               </NavLink>

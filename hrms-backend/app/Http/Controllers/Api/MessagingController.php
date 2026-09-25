@@ -262,7 +262,7 @@ class MessagingController extends Controller
     public function unreadCount(Request $request): JsonResponse
     {
         return $this->run(function () use ($request): array {
-            return ['unread_count' => $this->messaging->unreadCount($this->user($request))];
+            return $this->messaging->unreadSummary($this->user($request));
         }, 'Unread count retrieved.');
     }
 

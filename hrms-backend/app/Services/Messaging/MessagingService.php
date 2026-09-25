@@ -653,6 +653,14 @@ class MessagingService
 
     public function unreadCount(User $viewer): int
     {
+        return $this->unreadSummary($viewer)['unread_count'];
+    }
+
+    /**
+     * @return array{unread_count: int, has_unread_mention: bool}
+     */
+    public function unreadSummary(User $viewer): array
+    {
         $memberships = ConversationMember::query()
             ->where('user_id', $viewer->id)
             ->whereNull('left_at')
@@ -662,11 +670,16 @@ class MessagingService
             ->get();
 
         $total = 0;
+        $mentioned = false;
         foreach ($memberships as $membership) {
             $total += $this->unreadCountFor($viewer, $membership);
+            $mentioned = $mentioned || $this->hasUnreadMention($viewer, $membership);
         }
 
-        return $total;
+        return [
+            'unread_count' => $total,
+            'has_unread_mention' => $mentioned,
+        ];
     }
 
     /**
@@ -1167,6 +1180,9 @@ class MessagingService
     {
         $query = ChatMessage::query()
             ->where('conversation_id', $membership->conversation_id)
+            ->where(function ($builder) use ($viewer): void {
+                $builder->whereNull('sender_id')->orWhere('sender_id', '!=', $viewer->id);
+            })
             ->whereHas('mentions', function ($mentions) use ($viewer): void {
                 $mentions->where('mentions_everyone', true)->orWhere('user_id', $viewer->id);
             });

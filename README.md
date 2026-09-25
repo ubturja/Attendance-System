@@ -1,4 +1,4 @@
-# MTS Attendance HRMS
+# HRMS System
 
 A digital Human Resource Management System (HRMS) that replaces spreadsheet-based attendance tracking. It supports dynamic leave types, fractional half-day deductions, team-scoped attendance entry, and admin reporting (daily, monthly, yearly).
 
@@ -465,4 +465,4 @@ MTS Attn.Sys./
 
 ## License
 
-Private / internal project — MTS Attendance System.
+Private / internal project — made by Upanta Baidya as a Part of his Internship. 
